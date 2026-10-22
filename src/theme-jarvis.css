@@ -545,12 +545,6 @@ body.interactive .widget {
   padding-bottom: 2px;
 }
 
-.tt-head-num {
-  font-family: var(--font-display);
-  font-size: 0.6rem;
-  font-weight: 700;
-  color: var(--color-text);
-}
 
 .tt-head-time {
   font-size: 0.5rem;
@@ -594,7 +588,8 @@ body.interactive .widget {
   text-overflow: ellipsis;
 }
 
-.tt-room {
+.tt-room,
+.tt-time {
   font-size: 0.55rem;
   color: var(--color-text-dim);
   white-space: nowrap;

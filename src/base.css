@@ -1814,17 +1814,251 @@ body.editing .win-resize {
 }
 
 /* ── STAG widget ────────────────────────────────────────────
-   The timetable absorbs the free height (day rows stretch evenly);
-   courses/exams clip below it. Structural only — colors in themes. */
+   The timetable absorbs the free height (day rows stretch evenly; rows and
+   5-minute columns are set inline by JS); courses/exams clip below it.
+   Structural only — theme colors stay in the themes, except the custom
+   timetable palette and the now-line, which must read the same everywhere. */
 
 .tt-grid {
   flex: 1 1 auto;
   min-height: 0;
-  grid-template-rows: auto repeat(5, minmax(0, 1fr));
 }
 
 .tt-class {
   min-height: 0;
+  /* Columns have no gap, so back-to-back classes need their own seam. */
+  margin: 0 1px;
+}
+
+/* Hour labels sit centred on their hour line, not inside a column. */
+.tt-grid .tt-hour {
+  display: block;
+  justify-self: start;
+  width: 0;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.tt-hour .tt-head-time {
+  display: inline-block;
+  transform: translateX(-50%);
+}
+
+.tt-hour--first .tt-head-time {
+  transform: none;
+}
+
+.tt-grid .tt-hour--last {
+  justify-self: end;
+}
+
+.tt-hour--last .tt-head-time {
+  transform: translateX(-100%);
+}
+
+.tt-line {
+  justify-self: start;
+  width: 0;
+  border-left: 1px solid currentColor;
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+.tt-line--half {
+  opacity: 0.05;
+}
+
+.tt-meta {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tt-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.tt-meta .tt-room {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tt-now {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.tt-now::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: var(--at);
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #ff4d5e;
+  box-shadow: 0 0 6px rgba(255, 77, 94, 0.6);
+}
+
+/* Custom timetables: colour by source, same palette as calendar dots.
+   Two classes so it beats the themes' kind colouring. */
+.tt-src.tt-src {
+  border-left: 2px solid var(--src);
+  background: color-mix(in srgb, var(--src) 16%, transparent);
+}
+.tt-src--0 { --src: #4c9aff; }
+.tt-src--1 { --src: #f2704e; }
+.tt-src--2 { --src: #4fc08d; }
+.tt-src--3 { --src: #c07ee6; }
+.tt-src--4 { --src: #e0b93a; }
+.tt-src--5 { --src: #e05a7d; }
+
+.tt-week {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: 600 0.58rem/1.4 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.tt-week:hover,
+.tt-week--preview {
+  opacity: 1;
+}
+
+.tt-week--preview {
+  border-style: dashed;
+}
+
+.stag-offline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* timetable editor (gear panel) */
+.tt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tt-row,
+.tt-colors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tt-inline {
+  flex-direction: row;
+}
+
+.tt-inline input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tt-src-row,
+.tt-entry-row {
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tt-src-row:hover,
+.tt-entry-row:hover,
+.tt-src-row.is-on,
+.tt-entry-row.is-on {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.tt-entry-when {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.tt-colors .cal-dot {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.tt-colors .cal-dot.is-on {
+  border-color: currentColor;
+}
+
+.tt-seg {
+  display: inline-flex;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tt-seg-btn {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: 600 0.62rem/1.2 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.05em;
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.tt-seg-btn.is-on {
+  background: rgba(128, 128, 128, 0.2);
+  opacity: 1;
+}
+
+/* .w-btn is a fixed 22px square; these carry words. */
+.w-btn.tt-copy,
+.w-btn.tt-del {
+  width: auto;
+  min-width: 22px;
+  padding: 0 8px;
+}
+
+.tt-entry-form .tt-row > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tt-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 0.68rem/1 "Inter", system-ui, sans-serif;
+}
+
+.auth-form select,
+.tt-import {
+  padding: 6px 8px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  font: 400 0.72rem/1.3 "JetBrains Mono", ui-monospace, monospace;
+}
+
+.tt-import {
+  min-height: 80px;
+  resize: vertical;
 }
 
 .tt-day--today {

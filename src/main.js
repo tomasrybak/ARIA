@@ -6,6 +6,25 @@ import { WIDGETS, defaultLayout } from "./lib/widgets.js";
 import { MIN_DAYS, anomalies, coverage, fmtHours, trends, week } from "./lib/insights.js";
 import { whatMatters, noteSession } from "./lib/matters.js";
 import {
+  DAY_NAMES,
+  SRC_COLORS,
+  addSource,
+  copyWeek,
+  entryProblem,
+  flipFor,
+  isoWeek,
+  layoutWeek,
+  parseCustom,
+  putEntry,
+  removeEntry,
+  removeSource,
+  shiftWeeks,
+  sourceParity,
+  updateSource,
+  weekEntries,
+  weekLabel,
+} from "./lib/timetable.js";
+import {
   addNote,
   dueLabel,
   noteStatus,
@@ -669,9 +688,12 @@ function openAuthPanel(id) {
     out.classList.add("auth-danger");
     panel.append(form, out);
   } else if (id === "stag") {
-    const out = logoutBtn("stag_logout");
-    out.classList.add("auth-danger");
-    panel.append(out);
+    panel.append(timetableEditor(err));
+    if (stagData?.status === "connected") {
+      const out = logoutBtn("stag_logout");
+      out.classList.add("auth-danger");
+      panel.append(ttSection("STAG"), out);
+    }
   } else if (id === "email") {
     const list = document.createElement("div");
     list.className = "acct-list";
@@ -970,11 +992,43 @@ function todayIndex() {
   return (new Date().getDay() + 6) % 7;
 }
 
+// ── timetable (STAG + custom) ───────────────────────────────
+// Custom timetables live in localStorage; STAG arrives by event. Everything
+// that reads "the timetable" (widget, automation, matters) goes through
+// weekClasses() so the two always appear together.
+const TT_KEY = "aria-timetable";
+// Minutes per grid column: fine enough for any real bell schedule.
+const TT_STEP = 5;
+let ttCustom = { sources: [], entries: [] };
+// 0 = this week, 1 = next-week preview from the week badge.
+let ttWeekOffset = 0;
+// Editor selection: which timetable, which week tab, which entry is in the form.
+const ttEdit = { sourceId: null, week: "odd", entryId: null };
+
+function stagClasses() {
+  return stagData?.status === "connected" ? (stagData.timetable?.classes ?? []) : [];
+}
+
+function weekClasses(t) {
+  return weekEntries(stagClasses(), ttCustom, t);
+}
+
+function saveTimetable(next) {
+  ttCustom = next;
+  try {
+    localStorage.setItem(TT_KEY, JSON.stringify(ttCustom));
+  } catch {}
+}
+
+function entryClass(e) {
+  return e.color == null ? `tt-class--${CLASS_KIND[e.kind] ?? "other"}` : `tt-src tt-src--${e.color}`;
+}
+
 // Compact chips of today's classes — the s-size headline.
-function buildTodayStrip(tt) {
+function buildTodayStrip(entries) {
   const wrap = document.createElement("div");
   wrap.className = "stag-today";
-  const items = tt.classes.filter((c) => c.day === todayIndex());
+  const items = entries.filter((c) => c.day === todayIndex());
   if (items.length === 0) {
     wrap.classList.add("stag-today--free");
     wrap.textContent = "no classes today";
@@ -982,63 +1036,422 @@ function buildTodayStrip(tt) {
   }
   for (const c of items) {
     const chip = document.createElement("span");
-    chip.className = `stag-today-chip tt-class--${CLASS_KIND[c.kind] ?? "other"}`;
-    chip.textContent = `${c.subject} · ${c.kind} · ${c.time} · ${c.room}`;
+    chip.className = `stag-today-chip ${entryClass(c)}`;
+    chip.textContent = [c.subject, c.kind, c.time, c.room].filter(Boolean).join(" · ");
     wrap.append(chip);
   }
   return wrap;
 }
 
-function buildTimetable(tt) {
+// Week grid on a time axis: one column per TT_STEP minutes, hour lines, each
+// block labelled with its own start–end. Days with overlapping entries split
+// into lanes so nothing paints over anything else. `showNow` marks the current
+// minute on today's row (off while previewing next week).
+function buildTimetable(entries, showNow) {
+  const g = layoutWeek(entries);
   const grid = document.createElement("div");
   grid.className = "tt-grid";
-  const cols = tt.max_period - tt.min_period + 1;
-  // column 1 = day label, then one column per period.
-  grid.style.gridTemplateColumns = `auto repeat(${cols}, minmax(0, 1fr))`;
+  const col = (mins) => Math.round((mins - g.from) / TT_STEP) + 2;
+  grid.style.gridTemplateColumns = `auto repeat(${col(g.to) - 2}, minmax(0, 1fr))`;
+  // Themes space cells with `gap`; across 5-minute columns that would add up
+  // to more width than the classes themselves.
+  grid.style.columnGap = "0";
 
-  // header row: blank corner + period times
+  const firstRow = {};
+  const rows = ["auto"];
+  for (const d of g.days) {
+    firstRow[d.day] = rows.length + 1;
+    // A day keeps one row's height however many lanes it splits into.
+    for (let i = 0; i < d.lanes; i++) rows.push(`minmax(0, ${1 / d.lanes}fr)`);
+  }
+  grid.style.gridTemplateRows = rows.join(" ");
+
   const corner = document.createElement("div");
   corner.className = "tt-corner";
   grid.append(corner);
-  for (const ph of tt.periods) {
-    const h = document.createElement("div");
-    h.className = "tt-head";
-    h.style.gridColumn = ph.period - tt.min_period + 2;
-    const num = document.createElement("span");
-    num.className = "tt-head-num";
-    num.textContent = ph.period;
+  for (let h = g.from; h <= g.to; h += 60) {
+    const label = document.createElement("div");
+    label.className = "tt-head tt-hour";
+    if (h === g.from) label.classList.add("tt-hour--first");
+    if (h === g.to) label.classList.add("tt-hour--last");
+    // The last label sits at the end of the final column, not past it.
+    label.style.gridColumn = h === g.to ? col(h) - 1 : col(h);
+    label.style.gridRow = 1;
     const t = document.createElement("span");
     t.className = "tt-head-time";
-    t.textContent = ph.start;
-    h.append(num, t);
-    grid.append(h);
+    t.textContent = `${h / 60}:00`;
+    label.append(t);
+    grid.append(label);
+  }
+  for (let m = g.from + 30; m < g.to; m += 30) {
+    const line = document.createElement("div");
+    line.className = m % 60 ? "tt-line tt-line--half" : "tt-line";
+    line.style.gridColumn = col(m);
+    line.style.gridRow = "2 / -1";
+    grid.append(line);
   }
 
-  const dayNames = ["Po", "Út", "St", "Čt", "Pá"];
-  for (let d = 0; d < 5; d++) {
+  const today = todayIndex();
+  for (const d of g.days) {
     const label = document.createElement("div");
-    label.className = d === todayIndex() ? "tt-day tt-day--today" : "tt-day";
-    label.style.gridRow = d + 2;
-    label.textContent = dayNames[d];
+    label.className = showNow && d.day === today ? "tt-day tt-day--today" : "tt-day";
+    label.style.gridRow = `${firstRow[d.day]} / span ${d.lanes}`;
+    label.textContent = DAY_NAMES[d.day];
     grid.append(label);
   }
 
-  for (const c of tt.classes) {
+  for (const c of g.items) {
     const cell = document.createElement("div");
-    cell.className = `tt-class tt-class--${CLASS_KIND[c.kind] ?? "other"}`;
-    cell.style.gridRow = c.day + 2;
-    cell.style.gridColumn = `${c.start_period - tt.min_period + 2} / span ${c.end_period - c.start_period + 1}`;
+    cell.className = `tt-class ${entryClass(c)}`;
+    cell.style.gridRow = firstRow[c.day] + c.lane;
+    cell.style.gridColumn = `${col(c.startMin)} / ${Math.max(col(c.endMin), col(c.startMin) + 1)}`;
     const subj = document.createElement("span");
     subj.className = "tt-subj";
     subj.textContent = c.subject;
+    const meta = document.createElement("span");
+    meta.className = "tt-meta";
+    const time = document.createElement("span");
+    time.className = "tt-time";
+    time.textContent = c.time;
     const room = document.createElement("span");
     room.className = "tt-room";
     room.textContent = c.room;
-    cell.append(subj, room);
-    cell.title = `${c.subject} ${c.kind} · ${c.time} · ${c.room}`;
+    meta.append(time, room);
+    cell.append(subj, meta);
+    cell.title = [c.subject, c.kind, c.time, c.room, c.color == null ? "" : c.sourceName]
+      .filter(Boolean)
+      .join(" · ");
     grid.append(cell);
   }
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  if (showNow && firstRow[today] && nowMin >= g.from && nowMin < g.to) {
+    const lanes = g.days.find((d) => d.day === today).lanes;
+    const marker = document.createElement("div");
+    marker.className = "tt-now";
+    marker.style.gridRow = `${firstRow[today]} / span ${lanes}`;
+    marker.style.gridColumn = "2 / -1";
+    marker.style.setProperty("--at", `${((nowMin - g.from) / (g.to - g.from)) * 100}%`);
+    grid.append(marker);
+  }
   return grid;
+}
+
+// "ODD WEEK" / "EVEN WEEK" (or the week number when there is no single
+// parity); clicking previews next week and back.
+function buildWeekBadge(t) {
+  const btn = document.createElement("button");
+  btn.className = "tt-week";
+  const parity = weekLabel(stagClasses(), ttCustom, t);
+  const label = parity ? `${parity.toUpperCase()} WEEK` : `WEEK ${isoWeek(t)}`;
+  btn.textContent = ttWeekOffset ? `${label} · NEXT` : label;
+  btn.classList.toggle("tt-week--preview", ttWeekOffset !== 0);
+  btn.title = ttWeekOffset ? "Back to this week" : "Preview next week";
+  btn.addEventListener("click", () => {
+    ttWeekOffset = ttWeekOffset ? 0 : 1;
+    renderStag();
+  });
+  return btn;
+}
+
+// Two-or-more buttons acting as one choice; `on` is the selected value.
+function ttSegmented(options, on, onPick) {
+  const seg = document.createElement("div");
+  seg.className = "tt-seg";
+  for (const [value, label] of options) {
+    const b = document.createElement("button");
+    b.className = value === on ? "tt-seg-btn is-on" : "tt-seg-btn";
+    b.textContent = label;
+    b.addEventListener("click", () => onPick(value));
+    seg.append(b);
+  }
+  return seg;
+}
+
+function ttSection(text) {
+  const label = document.createElement("div");
+  label.className = "stag-section";
+  label.textContent = text;
+  return label;
+}
+
+// A delete that asks for a second click instead of a modal dialog.
+function ttConfirmButton(label, onConfirm) {
+  const b = document.createElement("button");
+  b.className = "w-btn tt-del";
+  b.textContent = label;
+  b.title = "Delete";
+  let armed = null;
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (armed) {
+      clearTimeout(armed);
+      onConfirm();
+      return;
+    }
+    b.textContent = "sure?";
+    armed = setTimeout(() => {
+      armed = null;
+      b.textContent = label;
+    }, 3000);
+  });
+  return b;
+}
+
+// Gear-panel editor for custom timetables. Redraws itself in place after
+// every change so the panel's scroll position and the rest stay put.
+function timetableEditor(err) {
+  const wrap = document.createElement("div");
+  wrap.className = "tt-editor";
+  const commit = (next) => {
+    saveTimetable(next);
+    redraw();
+  };
+  const redraw = () => {
+    wrap.replaceChildren();
+    const now = Date.now();
+    const sources = ttCustom.sources;
+    if (!sources.some((s) => s.id === ttEdit.sourceId)) {
+      ttEdit.sourceId = sources[0]?.id ?? null;
+      ttEdit.entryId = null;
+    }
+
+    wrap.append(ttSection("MY TIMETABLES"));
+    const list = document.createElement("div");
+    list.className = "acct-list";
+    for (const src of sources) {
+      const row = document.createElement("div");
+      row.className = src.id === ttEdit.sourceId ? "acct-row tt-src-row is-on" : "acct-row tt-src-row";
+      const dot = document.createElement("span");
+      dot.className = `cal-dot cal-dot--${src.color}`;
+      const name = document.createElement("span");
+      name.className = "acct-name";
+      name.textContent = src.name;
+      const mode = document.createElement("span");
+      mode.className = "acct-user";
+      mode.textContent = src.alternating ? "odd / even" : "weekly";
+      row.addEventListener("click", () => {
+        ttEdit.sourceId = src.id;
+        ttEdit.week = sourceParity(src, now);
+        ttEdit.entryId = null;
+        redraw();
+      });
+      row.append(dot, name, mode, ttConfirmButton("×", () => commit(removeSource(ttCustom, src.id))));
+      list.append(row);
+    }
+    const addForm = document.createElement("div");
+    addForm.className = "auth-form tt-inline";
+    const newName = authInput("new timetable, e.g. school name");
+    const addBtn = authButton("ADD", () => {
+      const next = addSource(ttCustom, newName.value, now);
+      if (next === ttCustom) return;
+      ttEdit.sourceId = next.sources.at(-1).id;
+      commit(next);
+    });
+    addForm.append(newName, addBtn);
+    wrap.append(list, addForm);
+
+    const src = sources.find((s) => s.id === ttEdit.sourceId);
+    if (src) {
+      wrap.append(ttSection(`EDIT · ${src.name}`));
+
+      const colors = document.createElement("div");
+      colors.className = "tt-colors";
+      for (let i = 0; i < SRC_COLORS; i++) {
+        const b = document.createElement("button");
+        b.className = i === src.color ? `cal-dot cal-dot--${i} is-on` : `cal-dot cal-dot--${i}`;
+        b.title = "Colour";
+        b.addEventListener("click", () => commit(updateSource(ttCustom, src.id, { color: i })));
+        colors.append(b);
+      }
+      wrap.append(colors);
+
+      wrap.append(
+        ttSegmented([["weekly", "SAME EVERY WEEK"], ["alt", "ODD / EVEN WEEKS"]], src.alternating ? "alt" : "weekly", (v) =>
+          commit(updateSource(ttCustom, src.id, { alternating: v === "alt" })),
+        ),
+      );
+
+      if (src.alternating) {
+        const anchorRow = document.createElement("div");
+        anchorRow.className = "tt-row";
+        const hint = document.createElement("span");
+        hint.className = "auth-note";
+        hint.textContent = "this week is";
+        anchorRow.append(
+          hint,
+          ttSegmented([["odd", "ODD"], ["even", "EVEN"]], sourceParity(src, now), (v) =>
+            commit(updateSource(ttCustom, src.id, { flip: flipFor(v, now) })),
+          ),
+        );
+        wrap.append(anchorRow);
+
+        const tabs = document.createElement("div");
+        tabs.className = "tt-row";
+        const otherWeek = ttEdit.week === "odd" ? "even" : "odd";
+        const copy = document.createElement("button");
+        copy.className = "w-btn tt-copy";
+        copy.textContent = `copy → ${otherWeek}`;
+        copy.title = `Replace the ${otherWeek} week with a copy of this one`;
+        copy.addEventListener("click", () => {
+          commit(copyWeek(ttCustom, src.id, ttEdit.week, now));
+        });
+        tabs.append(
+          ttSegmented([["odd", "ODD WEEK"], ["even", "EVEN WEEK"]], ttEdit.week, (v) => {
+            ttEdit.week = v;
+            ttEdit.entryId = null;
+            redraw();
+          }),
+          copy,
+        );
+        wrap.append(tabs);
+      }
+
+      // Weekly sources list their every-week entries; alternating ones the
+      // selected week plus anything marked for both.
+      const shown = ttCustom.entries
+        .filter((e) => e.sourceId === src.id)
+        .filter((e) => e.week === "all" || (src.alternating && e.week === ttEdit.week))
+        .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+      const entries = document.createElement("div");
+      entries.className = "acct-list";
+      if (!shown.length) {
+        const empty = document.createElement("span");
+        empty.className = "auth-note";
+        empty.textContent = "no classes yet: add the first one below";
+        entries.append(empty);
+      }
+      for (const e of shown) {
+        const row = document.createElement("div");
+        row.className = e.id === ttEdit.entryId ? "acct-row tt-entry-row is-on" : "acct-row tt-entry-row";
+        const when = document.createElement("span");
+        when.className = "acct-user tt-entry-when";
+        when.textContent = `${DAY_NAMES[e.day]} ${e.start}–${e.end}`;
+        const name = document.createElement("span");
+        name.className = "acct-name";
+        name.textContent = e.week === "all" && src.alternating ? `${e.title} (both)` : e.title;
+        const room = document.createElement("span");
+        room.className = "acct-user";
+        room.textContent = e.room;
+        row.title = "Click to edit";
+        row.addEventListener("click", () => {
+          ttEdit.entryId = e.id;
+          redraw();
+        });
+        row.append(when, name, room, ttConfirmButton("×", () => commit(removeEntry(ttCustom, e.id))));
+        entries.append(row);
+      }
+      wrap.append(entries);
+
+      const hidden = ttCustom.entries.filter((e) => e.sourceId === src.id && e.week !== "all").length;
+      if (!src.alternating && hidden) {
+        const note = document.createElement("span");
+        note.className = "auth-note";
+        note.textContent = `${hidden} odd/even ${hidden === 1 ? "class is" : "classes are"} hidden while this is set to the same every week`;
+        wrap.append(note);
+      }
+
+      const editing = ttCustom.entries.find((e) => e.id === ttEdit.entryId);
+      const form = document.createElement("div");
+      form.className = "auth-form tt-entry-form";
+      const day = document.createElement("select");
+      DAY_NAMES.forEach((d, i) => day.append(new Option(d, i)));
+      day.value = editing?.day ?? 0;
+      const start = authInput("start", "time");
+      const end = authInput("end", "time");
+      start.value = editing?.start ?? "";
+      end.value = editing?.end ?? "";
+      const title = authInput("subject / class, e.g. Programování 3.B");
+      title.value = editing?.title ?? "";
+      const room = authInput("room");
+      room.value = editing?.room ?? "";
+      const both = document.createElement("label");
+      both.className = "tt-check";
+      const bothBox = document.createElement("input");
+      bothBox.type = "checkbox";
+      bothBox.checked = editing?.week === "all";
+      both.append(bothBox, " both weeks");
+      const save = authButton(editing ? "SAVE" : "ADD CLASS", () => {
+        const week = !src.alternating || bothBox.checked ? "all" : ttEdit.week;
+        const entry = {
+          id: editing?.id,
+          sourceId: src.id,
+          day: Number(day.value),
+          start: start.value,
+          end: end.value,
+          title: title.value,
+          room: room.value,
+          week,
+        };
+        const problem = entryProblem(ttCustom, entry);
+        if (problem) {
+          formErr.textContent = problem;
+          return;
+        }
+        ttEdit.entryId = null;
+        commit(putEntry(ttCustom, entry, now));
+      });
+      // Next to the button, not at the panel's foot where it scrolls out of view.
+      const formErr = document.createElement("span");
+      formErr.className = "disconnected";
+      const times = document.createElement("div");
+      times.className = "tt-row";
+      times.append(day, start, end);
+      form.append(times, title, room);
+      if (src.alternating) form.append(both);
+      form.append(save, formErr);
+      if (editing) {
+        const cancel = authButton("CANCEL", () => {
+          ttEdit.entryId = null;
+          redraw();
+        });
+        form.append(cancel);
+      }
+      wrap.append(form);
+    }
+
+    // Backup and sharing go through the clipboard: no file dialogs needed.
+    const io = document.createElement("div");
+    io.className = "tt-row";
+    const exp = document.createElement("button");
+    exp.className = "w-btn tt-copy";
+    exp.textContent = "export";
+    exp.title = "Copy all custom timetables to the clipboard as JSON";
+    exp.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(ttCustom, null, 2));
+        exp.textContent = "copied";
+      } catch (e) {
+        err.textContent = String(e);
+      }
+    });
+    const imp = document.createElement("button");
+    imp.className = "w-btn tt-copy";
+    imp.textContent = "import";
+    imp.title = "Replace custom timetables with pasted JSON";
+    imp.addEventListener("click", () => {
+      if (wrap.querySelector(".tt-import")) return;
+      const box = document.createElement("textarea");
+      box.className = "tt-import";
+      box.placeholder = "paste exported JSON; replaces all custom timetables";
+      const apply = authButton("REPLACE", () => {
+        const next = parseCustom(box.value);
+        if (!next.sources.length) {
+          err.textContent = "no timetable found in the pasted text";
+          return;
+        }
+        err.textContent = "";
+        ttEdit.sourceId = null;
+        commit(next);
+      });
+      wrap.append(box, apply);
+    });
+    io.append(exp, imp);
+    wrap.append(io);
+  };
+  redraw();
+  return wrap;
 }
 
 function statRow(value, label) {
@@ -1093,7 +1506,7 @@ function mattersSources(now) {
     offline: Object.entries(STATUS_SOURCES)
       .filter(([id]) => sourceOnline[id] === false)
       .map(([, src]) => src),
-    agenda: automationAgenda(stagData, calData, now),
+    agenda: automationAgenda(weekClasses(now), calData, now),
     insights: trendsDays ? anomalies(trendsDays, now) : [],
     github: githubData,
     email: emailData,
@@ -1106,7 +1519,7 @@ function mattersSources(now) {
       since: focusSince || undefined,
       activeSince: session?.activeSince || undefined,
     },
-    classes: stagData?.status === "connected" ? (stagData.timetable?.classes ?? []) : [],
+    classes: weekClasses(now),
   };
 }
 
@@ -1867,128 +2280,154 @@ async function initCollectors() {
   await Promise.all(pending);
 }
 
+// CAS login button; errors land in `span` and the button re-arms.
+function stagConnectButton(span) {
+  const btn = document.createElement("button");
+  btn.className = "connect-btn";
+  btn.textContent = "CONNECT";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "WAITING FOR LOGIN…";
+    try {
+      await window.__TAURI__.core.invoke("stag_login");
+    } catch (err) {
+      span.textContent = String(err);
+      btn.disabled = false;
+      btn.textContent = "CONNECT";
+    }
+  });
+  return btn;
+}
+
+// The timetable widget: STAG (when connected) plus custom timetables. With
+// custom entries it keeps working while STAG is logged out.
 function renderStag() {
   if (authPanelId === "stag") return;
   const body = document.querySelector("#widget-stag .widget-body");
   if (!stagData) return;
   const p = stagData;
+  const connected = p.status === "connected";
   body.replaceChildren();
-  if (p.status === "connected") {
-    const header = document.createElement("div");
-    header.className = "stag-header";
-    const program = document.createElement("span");
-    program.className = "stag-program";
-    program.textContent = p.program;
-    const meta = document.createElement("span");
-    meta.className = "stag-meta";
-    meta.textContent = `${p.semester} · ${p.total_credits} cr`;
-    header.append(program, meta);
-    body.append(header);
 
-    const size = document.getElementById("widget-stag").dataset.size;
-
-    // Small: header, today's classes, and the nearest exam.
-    if (size === "s") {
-      body.append(buildTodayStrip(p.timetable));
-      if (p.exams?.length) {
-        const next = document.createElement("div");
-        next.className = "stag-next-exam";
-        const ex = p.exams[0];
-        next.textContent = `next exam · ${ex.subject} · ${ex.date}${ex.time ? ` ${ex.time}` : ""}`;
-        body.append(next);
-      }
-      return;
-    }
-
-    body.append(buildTimetable(p.timetable));
-
-    const coursesLabel = document.createElement("div");
-    coursesLabel.className = "stag-section";
-    coursesLabel.textContent = "COURSES";
-    const courseList = document.createElement("div");
-    courseList.className = "course-list fill-list";
-    for (const c of p.courses) {
-      const row = document.createElement("div");
-      row.className = "course-row";
-      const cr = document.createElement("span");
-      cr.className = "course-cr";
-      cr.textContent = c.credits;
-      const code = document.createElement("span");
-      code.className = c.compulsory ? "course-code course-code--req" : "course-code";
-      code.textContent = c.code;
-      const name = document.createElement("span");
-      name.className = "course-name";
-      name.textContent = c.name;
-      const tag = document.createElement("span");
-      tag.className = c.compulsory ? "course-tag course-tag--req" : "course-tag";
-      tag.textContent = c.compulsory ? "req" : "opt";
-      tag.title = c.compulsory ? "povinný" : "povinně volitelný";
-      row.append(cr, code, name, tag);
-      courseList.append(row);
-    }
-
-    // Large: two-column bottom — courses left, upcoming exams right.
-    // The exams column always renders so the layout reads the same
-    // even outside the exam period.
-    if (size === "l") {
-      const bottom = document.createElement("div");
-      bottom.className = "stag-bottom";
-      const coursesCol = document.createElement("div");
-      coursesCol.className = "stag-col";
-      coursesCol.append(coursesLabel, courseList);
-      const examsCol = document.createElement("div");
-      examsCol.className = "stag-col";
-      const examsLabel = document.createElement("div");
-      examsLabel.className = "stag-section";
-      examsLabel.textContent = "EXAMS";
-      const examList = document.createElement("div");
-      examList.className = "exam-list fill-list";
-      if (!p.exams?.length) {
-        const empty = document.createElement("div");
-        empty.className = "exam-empty";
-        empty.textContent = "no upcoming exams";
-        examList.append(empty);
-      }
-      for (const ex of p.exams ?? []) {
-        const row = document.createElement("div");
-        row.className = "exam-row";
-        const date = document.createElement("span");
-        date.className = "exam-date";
-        date.textContent = ex.time ? `${ex.date} ${ex.time}` : ex.date;
-        const subj = document.createElement("span");
-        subj.className = "exam-subj";
-        subj.textContent = ex.subject;
-        const room = document.createElement("span");
-        room.className = "exam-room";
-        room.textContent = ex.room;
-        row.append(date, subj, room);
-        examList.append(row);
-      }
-      examsCol.append(examsLabel, examList);
-      bottom.append(coursesCol, examsCol);
-      body.append(bottom);
-    } else {
-      body.append(coursesLabel, courseList);
-    }
-  } else {
+  if (!connected && ttCustom.entries.length === 0) {
     const span = document.createElement("span");
     span.className = "disconnected";
     span.textContent = p.reason;
-    const btn = document.createElement("button");
-    btn.className = "connect-btn";
-    btn.textContent = "CONNECT";
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      btn.textContent = "WAITING FOR LOGIN…";
-      try {
-        await window.__TAURI__.core.invoke("stag_login");
-      } catch (err) {
-        span.textContent = String(err);
-        btn.disabled = false;
-        btn.textContent = "CONNECT";
-      }
-    });
-    body.append(span, btn);
+    const own = document.createElement("button");
+    own.className = "connect-btn";
+    own.textContent = "ADD OWN TIMETABLE";
+    own.addEventListener("click", () => openAuthPanel("stag"));
+    body.append(span, stagConnectButton(span), own);
+    return;
+  }
+
+  const t = shiftWeeks(Date.now(), ttWeekOffset);
+  const header = document.createElement("div");
+  header.className = "stag-header";
+  const program = document.createElement("span");
+  program.className = "stag-program";
+  program.textContent = connected ? p.program : ttCustom.sources.map((s) => s.name).join(" · ");
+  const meta = document.createElement("span");
+  meta.className = "stag-meta";
+  if (connected) meta.textContent = `${p.semester} · ${p.total_credits} cr`;
+  meta.append(buildWeekBadge(t));
+  header.append(program, meta);
+  body.append(header);
+
+  const size = document.getElementById("widget-stag").dataset.size;
+
+  // Small: header, today's classes, and the nearest exam.
+  if (size === "s") {
+    body.append(buildTodayStrip(weekClasses(Date.now())));
+    if (connected && p.exams?.length) {
+      const next = document.createElement("div");
+      next.className = "stag-next-exam";
+      const ex = p.exams[0];
+      next.textContent = `next exam · ${ex.subject} · ${ex.date}${ex.time ? ` ${ex.time}` : ""}`;
+      body.append(next);
+    }
+    return;
+  }
+
+  body.append(buildTimetable(weekClasses(t), ttWeekOffset === 0));
+
+  if (!connected) {
+    const line = document.createElement("div");
+    line.className = "stag-offline";
+    const span = document.createElement("span");
+    span.className = "disconnected";
+    span.textContent = `STAG ${p.reason}`;
+    line.append(span, stagConnectButton(span));
+    body.append(line);
+    return;
+  }
+  const coursesLabel = document.createElement("div");
+  coursesLabel.className = "stag-section";
+  coursesLabel.textContent = "COURSES";
+  const courseList = document.createElement("div");
+  courseList.className = "course-list fill-list";
+  for (const c of p.courses) {
+    const row = document.createElement("div");
+    row.className = "course-row";
+    const cr = document.createElement("span");
+    cr.className = "course-cr";
+    cr.textContent = c.credits;
+    const code = document.createElement("span");
+    code.className = c.compulsory ? "course-code course-code--req" : "course-code";
+    code.textContent = c.code;
+    const name = document.createElement("span");
+    name.className = "course-name";
+    name.textContent = c.name;
+    const tag = document.createElement("span");
+    tag.className = c.compulsory ? "course-tag course-tag--req" : "course-tag";
+    tag.textContent = c.compulsory ? "req" : "opt";
+    tag.title = c.compulsory ? "povinný" : "povinně volitelný";
+    row.append(cr, code, name, tag);
+    courseList.append(row);
+  }
+
+  // Large: two-column bottom — courses left, upcoming exams right.
+  // The exams column always renders so the layout reads the same
+  // even outside the exam period.
+  if (size === "l") {
+    const bottom = document.createElement("div");
+    bottom.className = "stag-bottom";
+    const coursesCol = document.createElement("div");
+    coursesCol.className = "stag-col";
+    coursesCol.append(coursesLabel, courseList);
+    const examsCol = document.createElement("div");
+    examsCol.className = "stag-col";
+    const examsLabel = document.createElement("div");
+    examsLabel.className = "stag-section";
+    examsLabel.textContent = "EXAMS";
+    const examList = document.createElement("div");
+    examList.className = "exam-list fill-list";
+    if (!p.exams?.length) {
+      const empty = document.createElement("div");
+      empty.className = "exam-empty";
+      empty.textContent = "no upcoming exams";
+      examList.append(empty);
+    }
+    for (const ex of p.exams ?? []) {
+      const row = document.createElement("div");
+      row.className = "exam-row";
+      const date = document.createElement("span");
+      date.className = "exam-date";
+      date.textContent = ex.time ? `${ex.date} ${ex.time}` : ex.date;
+      const subj = document.createElement("span");
+      subj.className = "exam-subj";
+      subj.textContent = ex.subject;
+      const room = document.createElement("span");
+      room.className = "exam-room";
+      room.textContent = ex.room;
+      row.append(date, subj, room);
+      examList.append(row);
+    }
+    examsCol.append(examsLabel, examList);
+    bottom.append(coursesCol, examsCol);
+    body.append(bottom);
+  } else {
+    body.append(coursesLabel, courseList);
   }
 }
 
@@ -2226,6 +2665,16 @@ function persistNotes() {
   try {
     localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
   } catch {}
+}
+
+function initTimetable() {
+  try {
+    ttCustom = parseCustom(localStorage.getItem(TT_KEY));
+  } catch {}
+  // Keeps the now-line moving and rolls the week over on Monday.
+  setInterval(() => {
+    if (!document.hidden) renderStag();
+  }, 60_000);
 }
 
 function initNotes() {
@@ -3145,7 +3594,7 @@ function autoTick() {
   const signals = {
     app: focusedApp,
     gpu: gpuData && now - gpuAt < STALE_MS ? gpuData.gpu : null,
-    agenda: automationAgenda(stagData, calData, now),
+    agenda: automationAgenda(weekClasses(now), calData, now),
   };
   const before = JSON.stringify([autoState.active, autoState.suppressed]);
   const { state, action } = step(autoState, automation, presets.map((p) => p.name), signals, now);
@@ -3957,6 +4406,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Before initLayout(): its applyLayout() calls syncTerminal(), which starts
   // the shell if the terminal is on the board.
   initTerminal();
+  initTimetable();
   initNotes(); // before initLayout(): applyLayout() re-renders the widget
   initLayout();
   initAutomation(); // before initPresetMenu(): the menu shows its rules

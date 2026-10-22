@@ -162,16 +162,11 @@ test("a rule restored from a previous run gets the full exit grace", () => {
 test("the agenda places today's classes and skips all-day events", () => {
   // Wednesday 16 Sep 2026, 09:00 local.
   const now = new Date(2026, 8, 16, 9, 0).getTime();
-  const stag = {
-    status: "connected",
-    timetable: {
-      classes: [
-        { day: 2, time: "10:15–11:55", subject: "KIV/PT" },
-        { day: 3, time: "10:15–11:55", subject: "Thursday" },
-        { day: 2, time: "garbage", subject: "Bad" },
-      ],
-    },
-  };
+  const classes = [
+    { day: 2, time: "10:15–11:55", subject: "KIV/PT" },
+    { day: 3, time: "10:15–11:55", subject: "Thursday" },
+    { day: 2, time: "garbage", subject: "Bad" },
+  ];
   const calendar = {
     status: "connected",
     events: [
@@ -179,10 +174,10 @@ test("the agenda places today's classes and skips all-day events", () => {
       { title: "Holiday", all_day: true, start: now / 1000 },
     ],
   };
-  const agenda = automationAgenda(stag, calendar, now);
+  const agenda = automationAgenda(classes, calendar, now);
   assert.deepEqual(agenda.map((e) => e.title), ["KIV/PT", "Dentist"]);
   assert.equal(agenda[0].start, new Date(2026, 8, 16, 10, 15).getTime());
   assert.equal(agenda[0].end, new Date(2026, 8, 16, 11, 55).getTime());
   assert.equal(agenda[1].end - agenda[1].start, 3_600_000);
-  assert.deepEqual(automationAgenda({ status: "disconnected" }, null, now), []);
+  assert.deepEqual(automationAgenda(null, null, now), []);
 });

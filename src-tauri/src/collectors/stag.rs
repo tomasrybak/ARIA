@@ -12,6 +12,7 @@ const POLL_DISCONNECTED: Duration = Duration::from_secs(300);
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 
 // Fixed ZČU teaching-period start times, indexed by period number (1-based).
+// Only a fallback for entries that come without their actual times.
 const PERIOD_START: [&str; 15] = [
     "", "07:30", "08:25", "09:20", "10:15", "11:10", "12:05", "13:00", "13:55", "14:50", "15:45",
     "16:40", "17:35", "18:30", "19:25",
@@ -44,25 +45,17 @@ struct Exam {
 
 #[derive(Serialize, Clone)]
 struct Timetable {
-    min_period: u8,
-    max_period: u8,
-    periods: Vec<PeriodHeader>,
     classes: Vec<ClassEntry>,
-}
-
-#[derive(Serialize, Clone)]
-struct PeriodHeader {
-    period: u8,
-    start: String,
 }
 
 #[derive(Serialize, Clone)]
 struct ClassEntry {
     day: u8, // 0 = Monday
     day_label: String,
-    start_period: u8,
-    end_period: u8,
-    time: String,
+    start: String, // "HH:MM"
+    end: String,
+    time: String, // "HH:MM–HH:MM", display form
+    week: &'static str, // "all" | "odd" | "even" (ISO week parity)
     subject: String,
     kind: String,
     room: String,
@@ -192,8 +185,7 @@ async fn poll(client: &reqwest::Client) -> Result<StagState, String> {
 /// into their own upcoming list (deduped, future-only, soonest first).
 fn parse_timetable(body: &serde_json::Value, today: NaiveDate) -> (Timetable, Vec<Exam>) {
     let mut classes: Vec<ClassEntry> = Vec::new();
-    let mut seen: BTreeSet<(u8, u8, String, String)> = BTreeSet::new();
-    let mut periods_used: BTreeSet<u8> = BTreeSet::new();
+    let mut seen: BTreeSet<(u8, String, String, String, &str)> = BTreeSet::new();
     let mut exams: Vec<(NaiveDate, Exam)> = Vec::new();
     let mut exam_seen: BTreeSet<(String, NaiveDate)> = BTreeSet::new();
 
@@ -213,43 +205,24 @@ fn parse_timetable(body: &serde_json::Value, today: NaiveDate) -> (Timetable, Ve
             };
             let key = (
                 entry.day,
-                entry.start_period,
+                entry.start.clone(),
                 entry.subject.clone(),
                 entry.kind.clone(),
+                entry.week,
             );
             if !seen.insert(key) {
                 continue;
-            }
-            for p in entry.start_period..=entry.end_period {
-                periods_used.insert(p);
             }
             classes.push(entry);
         }
     }
 
-    classes.sort_by(|a, b| (a.day, a.start_period).cmp(&(b.day, b.start_period)));
-
-    let min_period = periods_used.iter().min().copied().unwrap_or(1);
-    let max_period = periods_used.iter().max().copied().unwrap_or(1);
-    let periods = (min_period..=max_period)
-        .map(|p| PeriodHeader {
-            period: p,
-            start: PERIOD_START.get(p as usize).unwrap_or(&"").to_string(),
-        })
-        .collect();
+    classes.sort_by(|a, b| (a.day, &a.start).cmp(&(b.day, &b.start)));
 
     exams.sort_by_key(|(date, _)| *date);
     let exams = exams.into_iter().map(|(_, e)| e).take(6).collect();
 
-    (
-        Timetable {
-            min_period,
-            max_period,
-            periods,
-            classes,
-        },
-        exams,
-    )
+    (Timetable { classes }, exams)
 }
 
 /// One exam sitting: needs a parseable date; time/room may be blank.
@@ -279,10 +252,21 @@ fn parse_exam(akce: &serde_json::Value) -> Option<(NaiveDate, Exam)> {
 
 fn parse_class(akce: &serde_json::Value) -> Option<ClassEntry> {
     let day = day_index(akce["denZkr"].as_str().or_else(|| akce["den"].as_str())?)?;
-    let start_period = akce["hodinaOd"].as_u64()? as u8;
-    let end_period = akce["hodinaDo"].as_u64().unwrap_or(start_period as u64) as u8;
-    let from = text(akce, &["hodinaSkutOd", "casOd"]).unwrap_or("");
-    let to = text(akce, &["hodinaSkutDo", "casDo"]).unwrap_or("");
+    let start_period = akce["hodinaOd"].as_u64()? as usize;
+    let end_period = akce["hodinaDo"].as_u64().map_or(start_period, |p| p as usize);
+    let period_start = |p: usize| PERIOD_START.get(p).filter(|s| !s.is_empty());
+    let start = text(akce, &["hodinaSkutOd", "casOd"])
+        .and_then(hhmm)
+        .or_else(|| period_start(start_period).map(|s| s.to_string()))?;
+    // A period is 45 minutes; the fallback end is the last period's start + 45.
+    let end = text(akce, &["hodinaSkutDo", "casDo"])
+        .and_then(hhmm)
+        .or_else(|| add_minutes(period_start(end_period)?, 45))?;
+    let week = match text(akce, &["tydenZkr"]) {
+        Some("S") => "even",
+        Some("L") => "odd",
+        _ => "all",
+    };
     let subject = match (text(akce, &["katedra"]), text(akce, &["predmet", "zkratka"])) {
         (Some(dept), Some(code)) => format!("{dept}/{code}"),
         (None, Some(code)) => code.to_string(),
@@ -296,13 +280,28 @@ fn parse_class(akce: &serde_json::Value) -> Option<ClassEntry> {
     Some(ClassEntry {
         day,
         day_label: day_short(day).to_string(),
-        start_period,
-        end_period,
-        time: format!("{from}–{to}"),
+        time: format!("{start}–{end}"),
+        start,
+        end,
+        week,
         subject,
         kind: text(akce, &["typAkceZkr"]).unwrap_or("").to_string(),
         room,
     })
+}
+
+/// Normalise "7:30" / "07:30" / "07:30:00" to "07:30".
+fn hhmm(raw: &str) -> Option<String> {
+    let mut parts = raw.trim().split(':');
+    let h: u32 = parts.next()?.parse().ok()?;
+    let m: u32 = parts.next()?.parse().ok()?;
+    (h < 24 && m < 60).then(|| format!("{h:02}:{m:02}"))
+}
+
+fn add_minutes(hhmm_str: &str, minutes: u32) -> Option<String> {
+    let (h, m) = hhmm_str.split_once(':')?;
+    let total = h.parse::<u32>().ok()? * 60 + m.parse::<u32>().ok()? + minutes;
+    Some(format!("{:02}:{:02}", total / 60 % 24, total % 60))
 }
 
 fn parse_courses(body: &serde_json::Value) -> Vec<Course> {

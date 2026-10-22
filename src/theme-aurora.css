@@ -646,12 +646,6 @@ body.interactive .mod-hint {
   padding-bottom: 3px;
 }
 
-.tt-head-num {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 500;
-  color: var(--text-dim);
-}
 
 .tt-head-time {
   font-family: var(--font-mono);
@@ -693,7 +687,8 @@ body.interactive .mod-hint {
   text-overflow: ellipsis;
 }
 
-.tt-room {
+.tt-room,
+.tt-time {
   font-family: var(--font-mono);
   font-size: 0.55rem;
   color: var(--text-dim);

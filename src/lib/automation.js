@@ -237,24 +237,22 @@ export function overridden(prev) {
 /**
  * Today's timetable and calendar as agenda entries for the `class` trigger.
  *
- * STAG classes are a weekly grid (`day` 0 = Monday, `time` "HH:MM–HH:MM"), so
- * they are placed on the date of `now`. Calendar events carry only a start;
+ * `classes` is this week's timetable (STAG and custom, `day` 0 = Monday,
+ * `time` "HH:MM–HH:MM"), so today's are placed on the date of `now`. Calendar events carry only a start;
  * an hour is assumed. All-day events never trigger — they are not something
  * you get ready for fifteen minutes ahead.
  */
-export function automationAgenda(stag, calendar, now) {
+export function automationAgenda(classes, calendar, now) {
   const out = [];
   const today = new Date(now);
   const weekday = (today.getDay() + 6) % 7;
-  if (stag?.status === "connected") {
-    for (const c of stag.timetable?.classes ?? []) {
-      if (c.day !== weekday) continue;
-      const m = /^(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})$/.exec(String(c.time ?? "").trim());
-      if (!m) continue;
-      const at = (h, min) =>
-        new Date(today.getFullYear(), today.getMonth(), today.getDate(), +h, +min).getTime();
-      out.push({ title: c.subject, start: at(m[1], m[2]), end: at(m[3], m[4]) });
-    }
+  for (const c of classes ?? []) {
+    if (c.day !== weekday) continue;
+    const m = /^(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})$/.exec(String(c.time ?? "").trim());
+    if (!m) continue;
+    const at = (h, min) =>
+      new Date(today.getFullYear(), today.getMonth(), today.getDate(), +h, +min).getTime();
+    out.push({ title: c.subject, start: at(m[1], m[2]), end: at(m[3], m[4]) });
   }
   if (calendar?.status === "connected") {
     for (const e of calendar.events ?? []) {
