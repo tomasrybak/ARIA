@@ -969,7 +969,15 @@ body.interactive .widget {
   }
 }
 
-/* Arc-reactor gauges — a rotating tick-ring frames each gauge. */
+/* Arc-reactor gauges — a rotating tick-ring frames each gauge.
+   The ring shares the canvas's box (full gauge width, capped at the
+   canvas's 170px, square, top of the column) and its mask radii are
+   percentages of that box, so it stays concentric with the arc at every
+   widget size. The arc's outer edge is at 85.5% of the radius (r 0.37 +
+   half of lw 0.115, see gauge.js); the ticks sit just outside it.
+   Centred with auto margins, never a translate: WebKit composites the
+   spin and keeps a percentage offset from the size the animation started
+   at, so a resized widget left the ring off-centre. */
 .gauge-canvas {
   position: relative;
   z-index: 1;
@@ -979,28 +987,36 @@ body.interactive .widget {
   content: "";
   position: absolute;
   top: 0;
-  left: 50%;
-  width: 132px;
-  height: 132px;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 170px;
+  aspect-ratio: 1;
   border-radius: 50%;
   background: repeating-conic-gradient(
     from 0deg,
     rgba(0, 212, 255, 0.4) 0 1deg,
     transparent 1deg 8deg
   );
-  /* Ticks sit just outside the arc but inside the 66px canvas radius, so
-     adjacent gauges never overlap. */
-  -webkit-mask: radial-gradient(circle, transparent 0 57px, #000 58px 62px, transparent 63px);
-  mask: radial-gradient(circle, transparent 0 57px, #000 58px 62px, transparent 63px);
+  -webkit-mask: radial-gradient(circle closest-side, transparent 0 90%, #000 90.5% 97.5%, transparent 98%);
+  mask: radial-gradient(circle closest-side, transparent 0 90%, #000 90.5% 97.5%, transparent 98%);
   animation: reactor-spin 20s linear infinite;
   pointer-events: none;
   z-index: 0;
 }
 
+/* Small SYSTEM hides the canvas, so the ring frames the readout instead. */
+.widget[data-size="s"] .gauge::before {
+  bottom: 0;
+  margin: auto;
+  width: 64px;
+  height: 64px;
+}
+
 @keyframes reactor-spin {
   to {
-    transform: translateX(-50%) rotate(360deg);
+    transform: rotate(360deg);
   }
 }
 
@@ -1060,12 +1076,13 @@ body.interactive .widget {
    theme silently loses the feature. Hover has nothing to reveal, so the
    strip keeps the slot instead of blanking. */
 .status-item, .vitals { display: none; }
+/* One centred row: without it the strip (a block) and its "+N" count stack
+   on two lines and the text rides high in the header. */
+.statusbar {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
 .statusbar.has-matters:hover .matters { display: block; }
 .statusbar.has-matters:hover .matters-more:not(:empty) { display: inline; }
 .theme-menu { font-family: "Rajdhani", sans-serif; }
-.gauge::before {
-  width: 100px;
-  height: 100px;
-  -webkit-mask: radial-gradient(circle, transparent 0 43px, #000 44px 48px, transparent 49px);
-  mask: radial-gradient(circle, transparent 0 43px, #000 44px 48px, transparent 49px);
-}
