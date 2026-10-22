@@ -56,6 +56,7 @@ export const BUILTIN_PRESETS = [
       stag:       { c: 1, r: 1, size: "m", hidden: true },
       terminal:   { c: 7, r: 1, size: "m", hidden: true },
       calendar:   { c: 1, r: 1, size: "m", hidden: true },
+      weather:    { c: 1, r: 1, size: "m", hidden: true },
       notes:      { c: 1, r: 1, size: "m", hidden: true },
       trends:     { c: 1, r: 1, size: "m", hidden: true },
     },
@@ -81,6 +82,7 @@ export const BUILTIN_PRESETS = [
       latency:    { c: 10, r: 6, size: "s", hidden: false },
       stag:       { c: 1, r: 1, size: "m", hidden: true },
       calendar:   { c: 1, r: 1, size: "m", hidden: true },
+      weather:    { c: 1, r: 1, size: "m", hidden: true },
       gpu:        { c: 1, r: 1, size: "m", hidden: true },
       screentime: { c: 1, r: 1, size: "s", hidden: true },
       trends:     { c: 1, r: 1, size: "m", hidden: true },
@@ -96,6 +98,7 @@ export const BUILTIN_PRESETS = [
     board: {
       stag:       { c: 1, r: 1, size: "m", hidden: false },
       calendar:   { c: 7, r: 1, size: "m", hidden: false },
+      weather:    { c: 1, r: 1, size: "m", hidden: true },
       notes:      { c: 10, r: 1, size: "m", hidden: false },
       email:      { c: 7, r: 3, size: "m", hidden: false },
       github:     { c: 10, r: 3, size: "m", hidden: false },

@@ -3,6 +3,7 @@ import { progressAt } from "./lib/music.js";
 import { HISTORY_LEN, autoScale, latest, peak, pushSample, seriesPaths } from "./lib/history.js";
 import { applyTerminalTheme, initTerminal, syncTerminal } from "./lib/terminal.js";
 import { WIDGETS, defaultLayout } from "./lib/widgets.js";
+import { dayLabel, describe, fmtPrecip, fmtTemp, fmtWind, placeLine, rangeBar } from "./lib/weather.js";
 import { MIN_DAYS, anomalies, coverage, fmtHours, trends, week } from "./lib/insights.js";
 import { whatMatters, noteSession } from "./lib/matters.js";
 import {
@@ -261,6 +262,176 @@ function renderCrypto() {
     row.append(sparkline(spark, up));
     body.append(row);
   }
+}
+
+// ── weather ─────────────────────────────────────────────────
+let weatherData = null;
+let weatherLastJson = null;
+
+function wxIcon(name, cls = "wx-icon") {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", cls);
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(NS, "use");
+  use.setAttribute("href", `#wx-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+function wxSpan(cls, text) {
+  const span = document.createElement("span");
+  span.className = cls;
+  span.textContent = text;
+  return span;
+}
+
+// City search + unit choice. Used by the disconnected widget and the gear
+// panel; picking a result saves it and the collector refetches.
+function weatherForm(err, units = "metric") {
+  const form = document.createElement("div");
+  form.className = "auth-form wx-form";
+  const query = authInput("city");
+  const unitBar = document.createElement("div");
+  unitBar.className = "period-bar";
+  for (const [key, label] of [["metric", "°C"], ["imperial", "°F"]]) {
+    const btn = document.createElement("button");
+    btn.className = key === units ? "period-btn period-btn--active" : "period-btn";
+    btn.textContent = label;
+    btn.addEventListener("click", () => {
+      units = key;
+      for (const b of unitBar.children) b.classList.toggle("period-btn--active", b === btn);
+    });
+    unitBar.append(btn);
+  }
+  const results = document.createElement("div");
+  results.className = "wx-results";
+  const search = authButton("SEARCH", async (b) => {
+    err.textContent = "";
+    b.disabled = true;
+    try {
+      const places = await window.__TAURI__.core.invoke("weather_search", { query: query.value });
+      results.replaceChildren();
+      if (!places.length) err.textContent = "no place found";
+      for (const place of places) {
+        const pick = document.createElement("button");
+        pick.className = "wx-result";
+        pick.textContent = placeLine(place);
+        pick.addEventListener("click", async () => {
+          if (await invokeAuth(pick, err, "weather_set_location", { place, units })) {
+            if (authPanelId === "weather") closeAuthPanel();
+          }
+        });
+        results.append(pick);
+      }
+    } catch (e) {
+      err.textContent = String(e);
+    }
+    b.disabled = false;
+  });
+  query.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") search.click();
+  });
+  form.append(query, unitBar, search, results);
+  return form;
+}
+
+function renderWeather() {
+  if (authPanelId === "weather") return;
+  const widget = document.getElementById("widget-weather");
+  const body = widget.querySelector(".widget-body");
+  if (!weatherData) return;
+  const p = weatherData;
+  body.replaceChildren();
+
+  if (p.status !== "connected") {
+    const err = document.createElement("span");
+    err.className = "disconnected";
+    body.append(wxSpan("disconnected", p.reason), weatherForm(err), err);
+    return;
+  }
+
+  const size = widget.dataset.size;
+  const { current, hourly, daily } = p.forecast;
+  const now = describe(current.code, current.is_day);
+  const today = daily[0];
+
+  const head = document.createElement("div");
+  head.className = "wx-head";
+  const text = document.createElement("div");
+  text.className = "wx-head-text";
+  text.append(wxSpan("wx-label", now.label), wxSpan("wx-place", p.place.name));
+  head.append(wxIcon(now.icon, "wx-icon wx-icon--now"), wxSpan("wx-temp", fmtTemp(current.temp)), text);
+  // L repeats today in the daily list, so only M shows it in the header.
+  if (today && size === "m") {
+    head.append(wxSpan("wx-range", `${fmtTemp(today.max)} / ${fmtTemp(today.min)}`));
+  }
+  body.append(head);
+  if (size === "s") return;
+
+  const sub = document.createElement("div");
+  sub.className = "wx-sub";
+  const bits = [
+    `feels ${fmtTemp(current.feels_like)}`,
+    fmtWind(current.wind, p.units),
+    `${Math.round(current.humidity)}% RH`,
+  ];
+  if (size === "l" && today?.sunrise) bits.push(`↑${today.sunrise} ↓${today.sunset}`);
+  sub.textContent = bits.join(" · ");
+  body.append(sub);
+
+  // Medium has room for six slots, so it steps every second hour.
+  const hours = size === "l" ? hourly : hourly.filter((_, i) => i % 2 === 0);
+  const strip = document.createElement("div");
+  strip.className = "wx-hours";
+  for (const h of hours) {
+    const cell = document.createElement("div");
+    cell.className = "wx-hour";
+    const wx = describe(h.code, h.is_day);
+    cell.title = wx.label;
+    cell.append(
+      wxSpan("wx-hour-time", h.time.slice(0, 2)),
+      wxIcon(wx.icon),
+      wxSpan("wx-hour-temp", fmtTemp(h.temp)),
+      wxSpan("wx-precip", fmtPrecip(h.precip_prob)),
+    );
+    strip.append(cell);
+  }
+  body.append(strip);
+
+  if (size === "l") {
+    const days = document.createElement("div");
+    days.className = "wx-days";
+    const weekMin = Math.min(...daily.map((d) => d.min));
+    const weekMax = Math.max(...daily.map((d) => d.max));
+    daily.forEach((d, i) => {
+      const track = document.createElement("span");
+      track.className = "wx-bar";
+      const fill = document.createElement("span");
+      fill.className = "wx-bar-fill";
+      const { left, width } = rangeBar(d.min, d.max, weekMin, weekMax);
+      fill.style.left = `${left}%`;
+      fill.style.width = `${width}%`;
+      track.append(fill);
+      const row = document.createElement("div");
+      row.className = "wx-day";
+      row.title = describe(d.code).label;
+      row.append(
+        wxSpan("wx-day-name", dayLabel(d.date, i)),
+        wxIcon(describe(d.code).icon),
+        wxSpan("wx-precip", fmtPrecip(d.precip_prob)),
+        wxSpan("wx-day-temp", fmtTemp(d.min)),
+        track,
+        wxSpan("wx-day-temp", fmtTemp(d.max)),
+      );
+      days.append(row);
+    });
+    body.append(days);
+  }
+
+  // Open-Meteo's data is CC BY 4.0, which asks for this credit.
+  body.append(wxSpan("wx-credit", "Open-Meteo"));
 }
 
 // ── widget auth (log in / log out) ──────────────────────────
@@ -582,6 +753,7 @@ function closeAuthPanel() {
     email: renderEmail,
     stag: renderStag,
     calendar: renderCalendar,
+    weather: renderWeather,
   })[id]?.();
 }
 
@@ -761,6 +933,25 @@ function openAuthPanel(id) {
     note.className = "auth-note";
     note.textContent = "Google Calendar → Settings → Integrate calendar → Secret address in iCal format";
     panel.append(note);
+  } else if (id === "weather") {
+    window.__TAURI__.core
+      .invoke("weather_config")
+      .then((cfg) => {
+        if (authPanelId !== "weather") return;
+        const [place, units] = cfg ?? [null, "metric"];
+        if (place) panel.append(wxSpan("auth-note", `now: ${placeLine(place)}`));
+        panel.append(weatherForm(err, units));
+        if (place) {
+          const clear = logoutBtn("weather_clear");
+          clear.textContent = "REMOVE LOCATION";
+          clear.classList.add("auth-danger");
+          panel.append(clear);
+        }
+        panel.append(err);
+      })
+      .catch((e) => {
+        err.textContent = String(e);
+      });
   }
 
   panel.append(err);
@@ -2223,6 +2414,14 @@ async function initCollectors() {
     renderGithub();
   });
 
+  on("weather", (e) => {
+    const raw = JSON.stringify(e.payload);
+    if (raw === weatherLastJson) return; // don't wipe the search form mid-typing
+    weatherLastJson = raw;
+    weatherData = e.payload;
+    renderWeather();
+  });
+
   on("crypto", (e) => {
     cryptoData = e.payload;
     renderCrypto();
@@ -2881,6 +3080,7 @@ function applyLayout() {
   renderTrends();
   renderMusic();
   renderCalendar();
+  renderWeather();
   renderGpu();
   renderThermals();
   renderPerf();
@@ -2976,9 +3176,9 @@ function initLayout() {
   const tray = document.getElementById("widget-tray");
 
   // Widgets with an account get a gear that opens their log-in/out panel.
-  const AUTH_WIDGETS = new Set(["discord", "github", "email", "stag", "calendar"]);
+  const AUTH_WIDGETS = new Set(["discord", "github", "email", "stag", "calendar", "weather"]);
   // Slow-polling collectors get a poll-now button.
-  const REFRESH_WIDGETS = { email: "email_refresh", github: "github_refresh", crypto: "crypto_refresh", stag: "stag_refresh", calendar: "cal_refresh" };
+  const REFRESH_WIDGETS = { email: "email_refresh", github: "github_refresh", crypto: "crypto_refresh", stag: "stag_refresh", calendar: "cal_refresh", weather: "weather_refresh" };
 
   for (const id of Object.keys(WIDGETS)) {
     const el = widgetEl(id);

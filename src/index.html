@@ -17,6 +17,50 @@
   </head>
 
   <body>
+    <!-- WEATHER icons, referenced as <use href="#wx-…">. Stroked in
+         currentColor so every theme colours them. -->
+    <svg class="wx-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="wx-sun-core" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </symbol>
+      <symbol id="wx-cloud-core" viewBox="0 0 24 24">
+        <path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 11.1 3.5 3.5 0 0 0 7 18z" />
+      </symbol>
+      <symbol id="wx-clear" viewBox="0 0 24 24"><use href="#wx-sun-core" /></symbol>
+      <symbol id="wx-night" viewBox="0 0 24 24">
+        <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+      </symbol>
+      <symbol id="wx-partly" viewBox="0 0 24 24">
+        <circle cx="8" cy="8" r="3" />
+        <path d="M8 2v1.5M2 8h1.5M3.8 3.8l1 1M12.2 3.8l-1 1" />
+        <path d="M9 20h8.5a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 8.4 13.8 3 3 0 0 0 9 20z" />
+      </symbol>
+      <symbol id="wx-night-partly" viewBox="0 0 24 24">
+        <path d="M11 7.5A4.5 4.5 0 0 1 5.5 2a4.5 4.5 0 1 0 5.5 5.5z" />
+        <path d="M9 20h8.5a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 8.4 13.8 3 3 0 0 0 9 20z" />
+      </symbol>
+      <symbol id="wx-cloud" viewBox="0 0 24 24"><use href="#wx-cloud-core" /></symbol>
+      <symbol id="wx-fog" viewBox="0 0 24 24">
+        <path d="M4 9h16M2 13h20M5 17h14M8 21h8" />
+      </symbol>
+      <symbol id="wx-drizzle" viewBox="0 0 24 24">
+        <path d="M7 14h10a3.5 3.5 0 0 0 .5-6.96A5.5 5.5 0 0 0 6.7 8 3 3 0 0 0 7 14z" />
+        <path d="M9 17v1M13 18v1M17 17v1M11 21v1M15 21v1" />
+      </symbol>
+      <symbol id="wx-rain" viewBox="0 0 24 24">
+        <path d="M7 14h10a3.5 3.5 0 0 0 .5-6.96A5.5 5.5 0 0 0 6.7 8 3 3 0 0 0 7 14z" />
+        <path d="M9 17l-1 4M13 17l-1 4M17 17l-1 4" />
+      </symbol>
+      <symbol id="wx-snow" viewBox="0 0 24 24">
+        <path d="M7 14h10a3.5 3.5 0 0 0 .5-6.96A5.5 5.5 0 0 0 6.7 8 3 3 0 0 0 7 14z" />
+        <path d="M9 18h.01M13 18h.01M17 18h.01M11 21h.01M15 21h.01" />
+      </symbol>
+      <symbol id="wx-storm" viewBox="0 0 24 24">
+        <path d="M7 14h10a3.5 3.5 0 0 0 .5-6.96A5.5 5.5 0 0 0 6.7 8 3 3 0 0 0 7 14z" />
+        <path d="M13 14l-3 4h4l-3 4" />
+      </symbol>
+    </svg>
     <!-- Backdrop, painted behind the glass panels. Filled in by setupWallpaper()
          from the desktop wallpaper, a user-picked image/video, or nothing.
          A real element rather than a pseudo-element because a ::before can't
@@ -335,6 +379,13 @@
           <h2 class="widget-label">TIMETABLE</h2>
           <div class="widget-body">
             <span class="disconnected">not connected</span>
+          </div>
+        </section>
+
+        <section class="widget widget--weather" id="widget-weather">
+          <h2 class="widget-label">WEATHER</h2>
+          <div class="widget-body">
+            <span class="disconnected">loading…</span>
           </div>
         </section>
 

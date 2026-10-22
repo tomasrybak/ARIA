@@ -82,7 +82,12 @@ pub fn run() {
             collectors::email::mail_remove_account,
             collectors::calendar::cal_add_feed,
             collectors::calendar::cal_remove_feed,
-            collectors::calendar::cal_refresh
+            collectors::calendar::cal_refresh,
+            collectors::weather::weather_refresh,
+            collectors::weather::weather_search,
+            collectors::weather::weather_set_location,
+            collectors::weather::weather_clear,
+            collectors::weather::weather_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

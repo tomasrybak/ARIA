@@ -5,10 +5,12 @@ pub mod email;
 pub mod github;
 mod hardware;
 pub mod history;
+mod http;
 pub mod latency;
 pub mod music;
 mod screentime;
 pub mod stag;
+pub mod weather;
 
 use tauri::{AppHandle, Manager};
 use tokio::sync::watch;
@@ -215,5 +217,6 @@ pub fn spawn_all(app: &AppHandle) {
     discord::spawn(app.clone(), rx.clone());
     email::spawn(app.clone(), rx.clone());
     calendar::spawn(app.clone(), rx.clone());
+    weather::spawn(app.clone(), rx.clone());
     stag::spawn(app.clone(), rx);
 }

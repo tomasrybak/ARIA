@@ -45,6 +45,7 @@ export const WIDGETS = {
   // everyday chrome, and the "Gaming" preset places all four at once.
   screentime: { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true },
   calendar:   { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true },
+  weather:    { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true },
   gpu:        { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true },
   thermals:   { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true },
   perf:       { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true },

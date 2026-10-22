@@ -1,4 +1,5 @@
 use serde::Serialize;
+use super::http::{get_json as get, FetchError, Throttle};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
@@ -77,35 +78,6 @@ struct Series {
     fetched: Option<Instant>,
 }
 
-enum FetchError {
-    RateLimited(Option<Duration>),
-    Other(String),
-}
-
-/// Global pause after a 429. Honors Retry-After when sent, otherwise
-/// doubles the pause on each consecutive 429 up to BACKOFF_MAX.
-struct Throttle {
-    until: Option<Instant>,
-    backoff: Duration,
-}
-
-impl Throttle {
-    fn active(&self) -> bool {
-        self.until.is_some_and(|t| Instant::now() < t)
-    }
-
-    fn hit(&mut self, retry_after: Option<Duration>) {
-        let wait = retry_after.unwrap_or(self.backoff).clamp(BACKOFF_MIN, BACKOFF_MAX);
-        self.until = Some(Instant::now() + wait);
-        self.backoff = (self.backoff * 2).min(BACKOFF_MAX);
-        eprintln!("crypto: rate limited by CoinGecko, pausing {}s", wait.as_secs());
-    }
-
-    fn ok(&mut self) {
-        self.backoff = BACKOFF_MIN;
-    }
-}
-
 pub fn spawn(app: AppHandle, mut ready: tokio::sync::watch::Receiver<bool>) {
     tauri::async_runtime::spawn(async move {
         let _ = ready.wait_for(|r| *r).await;
@@ -117,7 +89,7 @@ pub fn spawn(app: AppHandle, mut ready: tokio::sync::watch::Receiver<bool>) {
             }
         };
         let mut series: Vec<[Series; 2]> = COINS.iter().map(|_| Default::default()).collect();
-        let mut throttle = Throttle { until: None, backoff: BACKOFF_MIN };
+        let mut throttle = Throttle::new("crypto", BACKOFF_MIN, BACKOFF_MAX);
         let mut last_ok: Option<Vec<Coin>> = None;
         loop {
             let state = match poll(&client, &mut series, &mut throttle).await {
@@ -271,26 +243,4 @@ fn downsample(vals: &[f64]) -> Vec<f64> {
     (0..SPARK_POINTS)
         .map(|i| vals[i * last / (SPARK_POINTS - 1)])
         .collect()
-}
-
-async fn get(client: &reqwest::Client, url: &str) -> Result<serde_json::Value, FetchError> {
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| FetchError::Other(e.to_string()))?;
-    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        let after = resp
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.trim().parse::<u64>().ok())
-            .map(Duration::from_secs);
-        return Err(FetchError::RateLimited(after));
-    }
-    resp.error_for_status()
-        .map_err(|e| FetchError::Other(e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| FetchError::Other(e.to_string()))
 }

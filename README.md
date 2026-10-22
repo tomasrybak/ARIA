@@ -15,6 +15,7 @@ Built around a student/dev workflow at ZČU, but every widget is optional and th
 | GITHUB | Notifications, open PRs, last-pushed repo, contribution wall | GitHub REST + GraphQL, personal access token |
 | MAIL | Multi-account unread counts + recent messages, per-account filter | IMAP (read-only, never marks as seen) |
 | CRYPTO | BTC/ETH price, change + sparkline over 1D / 1M / 1Y | CoinGecko (free, no key) |
+| WEATHER | Current conditions, the next 12 hours, and a 7-day forecast at L | [Open-Meteo](https://open-meteo.com) (free, no key) |
 | NOW PLAYING | Track info, transport controls, playlist shuffle chips | Apple Music (macOS), SMTC (Windows), MPRIS (Linux) |
 | SCREEN TIME | Daily total + top apps by foreground time | Local tracking, idle-aware |
 | NOTES | Things to do, with pins and reminders — `!` pins a line, `@17:00` sets a time | Local, `localStorage` |
@@ -212,11 +213,15 @@ Channel "popularity" accrues automatically — one point per person-minute in vo
 ### Crypto
 No setup; CoinGecko's free API.
 
+### Weather
+No key. Type a city into the widget, pick the right match, choose °C or °F. Change it later from the widget's gear in edit mode. Weather data by [Open-Meteo](https://open-meteo.com), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 ## Files
 
 | File | Where | What |
 |---|---|---|
 | `mail.json` | app config dir¹ | mail accounts (managed by the widget, hand-editable) |
+| `weather.json` | app config dir¹ | the chosen place and units |
 | `discord.json` | app config dir¹ | server IDs + friends list (managed by the widget, hand-editable) |
 | `discord-popularity.json` | app data dir¹ | per-channel person-minute tallies |
 | `screentime/` | app data dir¹ | daily usage JSONs |
