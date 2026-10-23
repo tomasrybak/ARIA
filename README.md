@@ -15,7 +15,7 @@ Built around a student/dev workflow at ZČU, but every widget is optional and th
 | GITHUB | Notifications, open PRs, last-pushed repo, contribution wall | GitHub REST + GraphQL, personal access token |
 | MAIL | Multi-account unread counts + recent messages, per-account filter | IMAP (read-only, never marks as seen) |
 | CRYPTO | BTC/ETH price, change + sparkline over 1D / 1M / 1Y | CoinGecko (free, no key) |
-| WEATHER | Current conditions, the next 12 hours, and a 7-day forecast at L | [Open-Meteo](https://open-meteo.com) (free, no key) |
+| WEATHER | Current conditions with a "rain from 15:00" line, a 12-hour temperature and rain chart, and a 7-day forecast with details at L | [Open-Meteo](https://open-meteo.com) (free, no key) |
 | CLOCK | Local time in a gauge-style ring, up to three other time zones, and a countdown or 25/5 pomodoro with a chime | Local, `localStorage` |
 | NOW PLAYING | Track info, transport controls, playlist shuffle chips | Apple Music (macOS), SMTC (Windows), MPRIS (Linux) |
 | SCREEN TIME | Daily total + top apps by foreground time | Local tracking, idle-aware |

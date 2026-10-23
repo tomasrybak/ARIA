@@ -3,7 +3,18 @@ import { progressAt } from "./lib/music.js";
 import { HISTORY_LEN, autoScale, latest, peak, pushSample, seriesPaths } from "./lib/history.js";
 import { applyTerminalTheme, initTerminal, syncTerminal } from "./lib/terminal.js";
 import { WIDGETS, defaultLayout } from "./lib/widgets.js";
-import { dayLabel, describe, fmtPrecip, fmtTemp, fmtWind, placeLine, rangeBar } from "./lib/weather.js";
+import {
+  WET,
+  dayLabel,
+  describe,
+  fmtPrecip,
+  fmtTemp,
+  fmtWind,
+  hourlyChart,
+  placeLine,
+  rainLine,
+  rangeBar,
+} from "./lib/weather.js";
 import {
   BREAK_MS,
   IDLE,
@@ -364,12 +375,108 @@ function weatherForm(err, units = "metric") {
   return form;
 }
 
+// Redraws the hourly chart whenever its box changes size; one at a time,
+// since there is one WEATHER widget.
+let wxChartObserver = null;
+
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function wxRainLine(hourly) {
+  const rain = rainLine(hourly);
+  if (!rain) return null;
+  return wxSpan(`wx-rain${rain.wet ? " wx-rain--wet" : ""}`, rain.text);
+}
+
+// Temperature line over its own band, rain chance as bars in the band below,
+// and an HTML row of hours and icons under both. Sized from the box itself,
+// so it is drawn by the ResizeObserver once the widget has been laid out.
+function weatherChart(hourly) {
+  const box = document.createElement("div");
+  box.className = "wx-chart";
+  const plot = document.createElement("div");
+  plot.className = "wx-plot";
+  const axis = document.createElement("div");
+  axis.className = "wx-axis";
+  for (const h of hourly) {
+    const wx = describe(h.code, h.is_day);
+    const cell = document.createElement("div");
+    cell.className = "wx-tick";
+    cell.append(wxSpan("wx-hour-time", h.time.slice(0, 2)), wxIcon(wx.icon));
+    axis.append(cell);
+  }
+  box.append(plot, axis);
+  wxChartObserver?.disconnect();
+  wxChartObserver = new ResizeObserver(() => drawWeatherPlot(plot, hourly));
+  wxChartObserver.observe(plot);
+  return box;
+}
+
+function drawWeatherPlot(plot, hourly) {
+  const w = plot.clientWidth;
+  const h = plot.clientHeight;
+  if (!w || !h || !hourly.length) return;
+  const c = hourlyChart(hourly, w, h);
+  const svg = svgEl("svg", { class: "wx-svg", width: w, height: h, viewBox: `0 0 ${w} ${h}` });
+
+  const grad = svgEl("linearGradient", { id: "wx-area", x1: 0, y1: 0, x2: 0, y2: 1 });
+  grad.append(svgEl("stop", { offset: "0", class: "wx-area-top" }), svgEl("stop", { offset: "1", class: "wx-area-bottom" }));
+  const defs = svgEl("defs");
+  defs.append(grad);
+  const first = c.points[0];
+  const last = c.points[c.points.length - 1];
+  svg.append(
+    defs,
+    svgEl("path", { class: "wx-area", d: `${c.line} L${last.x},${c.tempBottom} L${first.x},${c.tempBottom} Z` }),
+    svgEl("line", { class: "wx-baseline", x1: 0, x2: w, y1: h - 0.5, y2: h - 0.5 }),
+    svgEl("path", { class: "wx-line", d: c.line }),
+  );
+
+  for (const b of c.bars) {
+    if (b.h > 0) svg.append(svgEl("rect", { class: "wx-rain-bar", x: b.x, y: b.y, width: b.w, height: b.h, rx: 2 }));
+    if (b.prob >= WET) {
+      const t = svgEl("text", { class: "wx-bar-label", x: b.x + b.w / 2, y: b.y - 4, "text-anchor": "middle" });
+      t.textContent = `${Math.round(b.prob)}%`;
+      svg.append(t);
+    }
+  }
+  // Every second hour labelled, the rest left to the line and the hover.
+  c.points.forEach((pt, i) => {
+    if (i % 2) return;
+    svg.append(svgEl("circle", { class: "wx-dot", cx: pt.x, cy: pt.y, r: 4 }));
+    const t = svgEl("text", { class: "wx-point-label", x: pt.x, y: pt.y - 9, "text-anchor": "middle" });
+    t.textContent = fmtTemp(pt.temp);
+    svg.append(t);
+  });
+  // Hover targets: a full-height column per hour, larger than any mark in it.
+  hourly.forEach((hr, i) => {
+    const hit = svgEl("rect", { class: "wx-hit", x: i * c.col, y: 0, width: c.col, height: h });
+    const tip = svgEl("title");
+    const rain = Number.isFinite(hr.precip_prob) ? ` · ${Math.round(hr.precip_prob)}% rain` : "";
+    tip.textContent = `${hr.time} · ${describe(hr.code, hr.is_day).label} · ${fmtTemp(hr.temp)}${rain}`;
+    hit.append(tip);
+    svg.append(hit);
+  });
+  plot.replaceChildren(svg);
+}
+
+function wxTile(label, value) {
+  const tile = document.createElement("div");
+  tile.className = "wx-tile";
+  tile.append(wxSpan("wx-tile-label", label), wxSpan("wx-tile-value", value));
+  return tile;
+}
+
 function renderWeather() {
   if (authPanelId === "weather") return;
   const widget = document.getElementById("widget-weather");
   const body = widget.querySelector(".widget-body");
   if (!weatherData) return;
   const p = weatherData;
+  wxChartObserver?.disconnect();
   body.replaceChildren();
 
   if (p.status !== "connected") {
@@ -383,6 +490,7 @@ function renderWeather() {
   const { current, hourly, daily } = p.forecast;
   const now = describe(current.code, current.is_day);
   const today = daily[0];
+  const range = today ? `${fmtTemp(today.max)} / ${fmtTemp(today.min)}` : "";
 
   const head = document.createElement("div");
   head.className = "wx-head";
@@ -390,75 +498,78 @@ function renderWeather() {
   text.className = "wx-head-text";
   text.append(wxSpan("wx-label", now.label), wxSpan("wx-place", p.place.name));
   head.append(wxIcon(now.icon, "wx-icon wx-icon--now"), wxSpan("wx-temp", fmtTemp(current.temp)), text);
-  // L repeats today in the daily list, so only M shows it in the header.
-  if (today && size === "m") {
-    head.append(wxSpan("wx-range", `${fmtTemp(today.max)} / ${fmtTemp(today.min)}`));
-  }
-  body.append(head);
-  if (size === "s") return;
-
-  const sub = document.createElement("div");
-  sub.className = "wx-sub";
-  const bits = [
-    `feels ${fmtTemp(current.feels_like)}`,
-    fmtWind(current.wind, p.units),
-    `${Math.round(current.humidity)}% RH`,
-  ];
-  if (size === "l" && today?.sunrise) bits.push(`↑${today.sunrise} ↓${today.sunset}`);
-  sub.textContent = bits.join(" · ");
-  body.append(sub);
-
-  // Medium has room for six slots, so it steps every second hour.
-  const hours = size === "l" ? hourly : hourly.filter((_, i) => i % 2 === 0);
-  const strip = document.createElement("div");
-  strip.className = "wx-hours";
-  for (const h of hours) {
-    const cell = document.createElement("div");
-    cell.className = "wx-hour";
-    const wx = describe(h.code, h.is_day);
-    cell.title = wx.label;
-    cell.append(
-      wxSpan("wx-hour-time", h.time.slice(0, 2)),
-      wxIcon(wx.icon),
-      wxSpan("wx-hour-temp", fmtTemp(h.temp)),
-      wxSpan("wx-precip", fmtPrecip(h.precip_prob)),
-    );
-    strip.append(cell);
-  }
-  body.append(strip);
-
-  if (size === "l") {
-    const days = document.createElement("div");
-    days.className = "wx-days";
-    const weekMin = Math.min(...daily.map((d) => d.min));
-    const weekMax = Math.max(...daily.map((d) => d.max));
-    daily.forEach((d, i) => {
-      const track = document.createElement("span");
-      track.className = "wx-bar";
-      const fill = document.createElement("span");
-      fill.className = "wx-bar-fill";
-      const { left, width } = rangeBar(d.min, d.max, weekMin, weekMax);
-      fill.style.left = `${left}%`;
-      fill.style.width = `${width}%`;
-      track.append(fill);
-      const row = document.createElement("div");
-      row.className = "wx-day";
-      row.title = describe(d.code).label;
-      row.append(
-        wxSpan("wx-day-name", dayLabel(d.date, i)),
-        wxIcon(describe(d.code).icon),
-        wxSpan("wx-precip", fmtPrecip(d.precip_prob)),
-        wxSpan("wx-day-temp", fmtTemp(d.min)),
-        track,
-        wxSpan("wx-day-temp", fmtTemp(d.max)),
-      );
-      days.append(row);
-    });
-    body.append(days);
-  }
-
+  const rain = wxRainLine(hourly);
   // Open-Meteo's data is CC BY 4.0, which asks for this credit.
-  body.append(wxSpan("wx-credit", "Open-Meteo"));
+  const credit = wxSpan("wx-credit", "Open-Meteo");
+
+  if (size !== "l") {
+    // S and M: conditions on the left, today's range and the rain line on the right.
+    const top = document.createElement("div");
+    top.className = "wx-top";
+    const side = document.createElement("div");
+    side.className = "wx-side";
+    if (range) side.append(wxSpan("wx-range", range));
+    if (rain) side.append(rain);
+    top.append(head, side);
+    body.append(top);
+    if (size === "s") return;
+
+    const sub = wxSpan(
+      "wx-sub",
+      [`feels ${fmtTemp(current.feels_like)}`, fmtWind(current.wind, p.units), `${Math.round(current.humidity)}% RH`].join(" · "),
+    );
+    body.append(sub, weatherChart(hourly), credit);
+    return;
+  }
+
+  // L: the reading and its details in a column, the chart and the week beside it.
+  const left = document.createElement("div");
+  left.className = "wx-col wx-col--now";
+  const tiles = document.createElement("div");
+  tiles.className = "wx-tiles";
+  tiles.append(
+    wxTile("Feels like", fmtTemp(current.feels_like)),
+    wxTile("Wind", fmtWind(current.wind, p.units)),
+    wxTile("Humidity", `${Math.round(current.humidity)}%`),
+    wxTile("Sun", today?.sunrise ? `↑${today.sunrise} ↓${today.sunset}` : "—"),
+    wxTile("Today", range || "—"),
+    wxTile("Rain today", Number.isFinite(today?.precip_prob) ? `${Math.round(today.precip_prob)}%` : "—"),
+  );
+  left.append(head);
+  if (rain) left.append(rain);
+  left.append(tiles, credit);
+
+  const right = document.createElement("div");
+  right.className = "wx-col wx-col--ahead";
+  const days = document.createElement("div");
+  days.className = "wx-days";
+  const weekMin = Math.min(...daily.map((d) => d.min));
+  const weekMax = Math.max(...daily.map((d) => d.max));
+  daily.forEach((d, i) => {
+    const row = document.createElement("div");
+    row.className = "wx-day";
+    const wx = describe(d.code);
+    row.title = wx.label;
+    const bar = rangeBar(d.min, d.max, weekMin, weekMax);
+    const track = document.createElement("span");
+    track.className = "wx-bar";
+    const fill = document.createElement("span");
+    fill.className = "wx-bar-fill";
+    fill.style.left = `${bar.left}%`;
+    fill.style.width = `${bar.width}%`;
+    track.append(fill);
+    row.append(
+      wxSpan("wx-day-name", dayLabel(d.date, i)),
+      wxIcon(wx.icon),
+      wxSpan("wx-precip", fmtPrecip(d.precip_prob)),
+      wxSpan("wx-day-temp", fmtTemp(d.min)),
+      track,
+      wxSpan("wx-day-temp", fmtTemp(d.max)),
+    );
+    days.append(row);
+  });
+  right.append(weatherChart(hourly), days);
+  body.append(left, right);
 }
 
 // ── clock ───────────────────────────────────────────────────

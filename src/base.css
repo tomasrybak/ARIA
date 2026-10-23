@@ -2795,20 +2795,6 @@ body.editing .w-controls {
   text-overflow: ellipsis;
 }
 
-.wx-hours {
-  display: flex;
-  justify-content: space-between;
-  gap: 4px;
-}
-
-.wx-hour {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-}
-
 .wx-hour-time,
 .wx-precip {
   font: 400 0.62rem/1.2 "JetBrains Mono", ui-monospace, monospace;
@@ -2819,11 +2805,6 @@ body.editing .w-controls {
   min-height: 1.2em;
   color: #4c9aff;
   opacity: 0.85;
-}
-
-.wx-hour-temp {
-  font: 500 0.72rem/1.2 "JetBrains Mono", ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
 }
 
 .wx-days {
@@ -2893,17 +2874,215 @@ body.editing .w-controls {
   background: rgba(127, 127, 127, 0.18);
 }
 
+/* S and M: conditions left, today's range and the rain line right. */
+.wx-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wx-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  text-align: right;
+}
+
+.wx-rain {
+  font: 500 0.7rem/1.3 "Inter", system-ui, sans-serif;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wx-rain--wet {
+  color: #4c9aff;
+  opacity: 1;
+}
+
+.wx-rain--wet::before {
+  content: "☂ ";
+}
+
 .widget--weather[data-size="s"] .widget-body {
   justify-content: center;
 }
 
 .widget--weather[data-size="s"] .wx-icon--now {
-  width: 24px;
-  height: 24px;
+  width: 42px;
+  height: 42px;
 }
 
 .widget--weather[data-size="s"] .wx-temp {
-  font-size: 1.25rem;
+  font-size: 2.3rem;
+}
+
+/* The hourly chart: SVG plot sized by the box, an HTML hour row under it. */
+.wx-chart {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 90px;
+  gap: 4px;
+}
+
+.wx-plot {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wx-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.wx-line {
+  fill: none;
+  stroke: var(--accent, var(--color-accent));
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.wx-area {
+  fill: url(#wx-area);
+}
+
+.wx-area-top {
+  stop-color: var(--accent, var(--color-accent));
+  stop-opacity: 0.22;
+}
+
+.wx-area-bottom {
+  stop-color: var(--accent, var(--color-accent));
+  stop-opacity: 0;
+}
+
+.wx-dot {
+  fill: var(--accent, var(--color-accent));
+  stroke: var(--bg-panel, var(--color-bg, #111));
+  stroke-width: 2;
+}
+
+.wx-point-label,
+.wx-bar-label {
+  fill: currentColor;
+  font: 500 0.66rem "JetBrains Mono", ui-monospace, monospace;
+}
+
+.wx-bar-label {
+  font-size: 0.58rem;
+  opacity: 0.6;
+}
+
+.wx-rain-bar {
+  fill: #4c9aff;
+  opacity: 0.55;
+}
+
+.wx-baseline {
+  stroke: currentColor;
+  stroke-opacity: 0.15;
+}
+
+.wx-hit {
+  fill: transparent;
+}
+
+.wx-hit:hover {
+  fill: currentColor;
+  fill-opacity: 0.05;
+}
+
+.wx-axis {
+  display: flex;
+}
+
+.wx-tick {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wx-tick .wx-icon {
+  width: 15px;
+  height: 15px;
+  opacity: 0.8;
+}
+
+/* L: the reading and its details beside the chart and the week. */
+.widget--weather[data-size="l"] .widget-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  column-gap: 22px;
+}
+
+.wx-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.widget--weather[data-size="l"] .wx-icon--now {
+  width: 52px;
+  height: 52px;
+}
+
+.widget--weather[data-size="l"] .wx-temp {
+  font-size: 3rem;
+}
+
+.widget--weather[data-size="l"] .wx-head {
+  flex-wrap: wrap;
+}
+
+.wx-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.wx-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+  min-width: 0;
+}
+
+.wx-tile-label {
+  font: 500 0.58rem/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.wx-tile-value {
+  font: 600 0.95rem/1.2 var(--font-display, system-ui), sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wx-col--now .wx-credit {
+  align-self: flex-start;
 }
 
 /* ── CLOCK ──────────────────────────────────────────────────
