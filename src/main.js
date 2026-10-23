@@ -1,9 +1,36 @@
-import { drawGauge } from "./gauge.js";
+import { drawGauge, drawRing } from "./gauge.js";
 import { progressAt } from "./lib/music.js";
 import { HISTORY_LEN, autoScale, latest, peak, pushSample, seriesPaths } from "./lib/history.js";
 import { applyTerminalTheme, initTerminal, syncTerminal } from "./lib/terminal.js";
 import { WIDGETS, defaultLayout } from "./lib/widgets.js";
 import { dayLabel, describe, fmtPrecip, fmtTemp, fmtWind, placeLine, rangeBar } from "./lib/weather.js";
+import {
+  BREAK_MS,
+  IDLE,
+  MAX_MINUTES,
+  MAX_ZONES,
+  addZone,
+  dayShift,
+  fmtDate,
+  fmtDiff,
+  fmtLeft,
+  fmtTime,
+  isRunning,
+  parseMinutes,
+  parseTimer,
+  parseZones,
+  pause,
+  phaseLabel,
+  progress,
+  remaining,
+  removeZone,
+  resume,
+  startPomodoro,
+  startTimer,
+  tick,
+  zoneDiff,
+  zoneLabel,
+} from "./lib/clock.js";
 import { MIN_DAYS, anomalies, coverage, fmtHours, trends, week } from "./lib/insights.js";
 import { whatMatters, noteSession } from "./lib/matters.js";
 import {
@@ -434,6 +461,327 @@ function renderWeather() {
   body.append(wxSpan("wx-credit", "Open-Meteo"));
 }
 
+// ── clock ───────────────────────────────────────────────────
+// Local time, up to three other zones, and a timer/pomodoro; the rules are in
+// lib/clock.js. renderClock() builds the DOM when its shape changes and the
+// per-second tick only patches text, so typing into the minutes field and
+// hovering a button survive it.
+const CLOCK_ZONES_KEY = "aria-clock-zones";
+const CLOCK_TIMER_KEY = "aria-clock-timer";
+let clockZones = [];
+let clockTimer = IDLE;
+// The nodes the tick patches; replaced by every renderClock().
+let clockRefs = null;
+let chime = null;
+
+function persistClock() {
+  try {
+    localStorage.setItem(CLOCK_ZONES_KEY, JSON.stringify(clockZones));
+    localStorage.setItem(CLOCK_TIMER_KEY, JSON.stringify(clockTimer));
+  } catch {}
+}
+
+function initClock() {
+  try {
+    clockZones = parseZones(localStorage.getItem(CLOCK_ZONES_KEY));
+    clockTimer = parseTimer(localStorage.getItem(CLOCK_TIMER_KEY));
+  } catch {}
+  // Re-aimed at the next wall-clock second every time: a setInterval started
+  // mid-second would show each change up to a second late, and drift.
+  const loop = () => {
+    clockTick();
+    setTimeout(loop, 1000 - (Date.now() % 1000));
+  };
+  setTimeout(loop, 1000 - (Date.now() % 1000));
+  renderClock();
+}
+
+function setClockTimer(next) {
+  clockTimer = next;
+  persistClock();
+  renderClock();
+}
+
+// Runs whether or not the widget is on the board: a timer has to end on time
+// even while it sits in the tray.
+function clockTick() {
+  const now = Date.now();
+  const { state, ended } = tick(clockTimer, now);
+  if (state !== clockTimer) setClockTimer(state);
+  if (ended) {
+    const text = {
+      timer: "Timer done",
+      focus: `Focus done · ${BREAK_MS / 60_000} min break`,
+      break: "Break over · back to focus",
+    }[ended];
+    showToast(text, false, "clock");
+    playChime();
+  }
+  patchClock(now);
+}
+
+// WebKit lets an AudioContext make sound only once a user gesture has started
+// it, so it is armed by the click that starts a timer; a timer restored after
+// a reload ends with the toast alone. Kept suspended between chimes: a running
+// context is an open stream, which the screen-time tracker would read as media
+// playing (see Presence::Media in screentime.rs).
+function armChime() {
+  try {
+    chime ??= new AudioContext();
+    chime.resume().then(() => chime.suspend());
+  } catch {}
+}
+
+async function playChime() {
+  if (!chime) return;
+  try {
+    await chime.resume();
+  } catch {
+    return;
+  }
+  const t0 = chime.currentTime;
+  [880, 1320].forEach((freq, i) => {
+    const osc = chime.createOscillator();
+    const gain = chime.createGain();
+    const t = t0 + i * 0.22;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(gain).connect(chime.destination);
+    osc.start(t);
+    osc.stop(t + 0.21);
+  });
+  setTimeout(() => chime.suspend(), 600);
+}
+
+function clockButton(cls, label, onClick) {
+  const btn = document.createElement("button");
+  btn.className = cls;
+  btn.textContent = label;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function toggleClockTimer() {
+  armChime();
+  const now = Date.now();
+  setClockTimer(isRunning(clockTimer) ? pause(clockTimer, now) : resume(clockTimer, now));
+}
+
+function clockPhase(s) {
+  // Rounds count finished focus blocks, so the one in progress is the next.
+  return s.phase === "focus" ? `${phaseLabel(s.phase)} #${s.rounds + 1}` : phaseLabel(s.phase);
+}
+
+// Presets and custom minutes when idle, pause/reset when not.
+function clockControls(err) {
+  const row = document.createElement("div");
+  row.className = "clk-controls";
+  if (clockTimer.phase !== "idle") {
+    row.append(
+      clockButton("period-btn", isRunning(clockTimer) ? "PAUSE" : "RESUME", toggleClockTimer),
+      clockButton("period-btn", "RESET", () => setClockTimer(IDLE)),
+    );
+    return row;
+  }
+  for (const min of [5, 15]) {
+    row.append(
+      clockButton("period-btn", `${min}M`, () => {
+        armChime();
+        setClockTimer(startTimer(min * 60_000, Date.now()));
+      }),
+    );
+  }
+  row.append(
+    clockButton("period-btn", "POMODORO", () => {
+      armChime();
+      setClockTimer(startPomodoro(Date.now()));
+    }),
+  );
+  const minutes = authInput("min");
+  minutes.className = "clk-minutes";
+  minutes.inputMode = "numeric";
+  const start = clockButton("period-btn", "▶", () => {
+    const ms = parseMinutes(minutes.value);
+    if (ms == null) {
+      err.textContent = `whole minutes, 1–${MAX_MINUTES}`;
+      return;
+    }
+    armChime();
+    setClockTimer(startTimer(ms, Date.now()));
+  });
+  start.title = "Start a timer for this many minutes";
+  minutes.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") start.click();
+    if (e.key === "Escape") minutes.blur();
+  });
+  row.append(minutes, start);
+  return row;
+}
+
+function clockZoneList(refs, cls) {
+  const list = document.createElement("div");
+  list.className = cls;
+  for (const zone of clockZones) {
+    const row = document.createElement("div");
+    row.className = "clk-zone";
+    row.title = zone;
+    const z = { zone, time: wxSpan("clk-zone-time", ""), meta: wxSpan("clk-zone-meta", "") };
+    const name = document.createElement("div");
+    name.className = "clk-zone-label";
+    name.append(wxSpan("clk-zone-name", zoneLabel(zone)), z.meta);
+    row.append(name, z.time);
+    refs.zones.push(z);
+    list.append(row);
+  }
+  return list;
+}
+
+// M: the time inside a ring that sweeps the minute, or the timer's progress
+// while one runs; zones beside it, controls along the bottom.
+function renderClockM(body, refs) {
+  const active = clockTimer.phase !== "idle";
+  const dial = document.createElement("div");
+  dial.className = `clk-dial${active ? ` clk-dial--${clockTimer.phase}` : ""}`;
+  refs.ring = document.createElement("canvas");
+  refs.ring.className = "clk-ring";
+  refs.ring.width = refs.ring.height = 240;
+  const face = document.createElement("div");
+  face.className = "clk-face";
+  refs.time = wxSpan("clk-time", "");
+  if (active) {
+    refs.left = wxSpan("clk-left", "");
+    face.append(wxSpan("clk-phase", clockPhase(clockTimer)), refs.left, refs.time);
+    refs.time.classList.add("clk-time--small");
+  } else {
+    refs.date = wxSpan("clk-date", "");
+    face.append(refs.time, refs.date);
+  }
+  dial.append(refs.ring, face);
+
+  const side = clockZoneList(refs, "clk-side");
+  if (!clockZones.length) side.append(wxSpan("clk-hint", "Add time zones: edit mode → ⚙"));
+
+  const err = document.createElement("span");
+  err.className = "clk-err";
+  body.append(dial, side, clockControls(err), err);
+}
+
+// S: one big line of time, then whatever is running as a bar, or the first
+// zones when nothing is.
+function renderClockS(body, refs) {
+  const head = document.createElement("div");
+  head.className = "clk-head";
+  refs.time = wxSpan("clk-time", "");
+  refs.date = wxSpan("clk-date", "");
+  head.append(refs.time, refs.date);
+  body.append(head);
+
+  if (clockTimer.phase !== "idle") {
+    const line = document.createElement("div");
+    line.className = `clk-line clk-line--${clockTimer.phase}`;
+    const track = document.createElement("div");
+    track.className = "clk-bar";
+    refs.bar = document.createElement("div");
+    refs.bar.className = "clk-bar-fill";
+    track.append(refs.bar);
+    refs.left = wxSpan("clk-left", "");
+    line.append(
+      track,
+      wxSpan("clk-phase", clockPhase(clockTimer)),
+      refs.left,
+      clockButton("clk-mini", isRunning(clockTimer) ? "❚❚" : "▶", toggleClockTimer),
+    );
+    body.append(line);
+  } else if (clockZones.length) {
+    body.append(clockZoneList(refs, "clk-strip"));
+  }
+}
+
+function renderClock() {
+  if (authPanelId === "clock") return;
+  const widget = document.getElementById("widget-clock");
+  if (!widget) return;
+  const body = widget.querySelector(".widget-body");
+  const size = widget.dataset.size === "s" ? "s" : "m";
+  const refs = { size, zones: [] };
+  body.replaceChildren();
+  if (size === "s") renderClockS(body, refs);
+  else renderClockM(body, refs);
+  clockRefs = refs;
+  patchClock(Date.now());
+}
+
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+function patchClock(now) {
+  const r = clockRefs;
+  if (!r?.time.isConnected) return;
+  setText(r.time, fmtTime(now));
+  if (r.date) setText(r.date, fmtDate(now, { short: true }));
+  for (const z of r.zones) {
+    setText(z.time, fmtTime(now, { zone: z.zone }));
+    const shift = dayShift(z.zone, now);
+    const day = shift > 0 ? " · tomorrow" : shift < 0 ? " · yesterday" : "";
+    setText(z.meta, fmtDiff(zoneDiff(z.zone, now)) + day);
+  }
+  const left = remaining(clockTimer, now);
+  if (r.left && left != null) setText(r.left, fmtLeft(left));
+  const done = progress(clockTimer, now);
+  if (r.bar) r.bar.style.width = `${(done * 100).toFixed(2)}%`;
+  if (r.ring) drawRing(r.ring, left == null ? new Date(now).getSeconds() / 60 : done);
+}
+
+// Gear panel: the zone list with a remove button each, and an add field that
+// autocompletes from the engine's own zone list where it publishes one.
+function clockZoneEditor(err) {
+  const wrap = document.createElement("div");
+  wrap.className = "auth-form";
+  const save = (zones) => {
+    clockZones = zones;
+    persistClock();
+    openAuthPanel("clock");
+  };
+  const list = document.createElement("div");
+  list.className = "acct-list";
+  for (const zone of clockZones) {
+    const row = document.createElement("div");
+    row.className = "acct-row";
+    const name = wxSpan("acct-name", zoneLabel(zone));
+    const full = wxSpan("acct-user", zone);
+    const del = clockButton("w-btn", "×", () => save(removeZone(clockZones, zone)));
+    del.title = "Remove time zone";
+    row.append(name, full, del);
+    list.append(row);
+  }
+  const input = authInput("e.g. America/New_York");
+  if (typeof Intl.supportedValuesOf === "function") {
+    const options = document.createElement("datalist");
+    options.id = "clk-zone-options";
+    for (const zone of Intl.supportedValuesOf("timeZone")) {
+      const opt = document.createElement("option");
+      opt.value = zone;
+      options.append(opt);
+    }
+    input.setAttribute("list", options.id);
+    wrap.append(options);
+  }
+  const add = authButton("ADD ZONE", () => {
+    const { zones, error } = addZone(clockZones, input.value);
+    if (error) err.textContent = error;
+    else save(zones);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") add.click();
+  });
+  wrap.append(list);
+  if (clockZones.length < MAX_ZONES) wrap.append(input, add);
+  return wrap;
+}
+
 // ── widget auth (log in / log out) ──────────────────────────
 // Disconnected widgets render their login form inline; connected ones get a
 // gear in the edit-mode controls that opens a log-out/reconfigure panel.
@@ -754,6 +1102,7 @@ function closeAuthPanel() {
     stag: renderStag,
     calendar: renderCalendar,
     weather: renderWeather,
+    clock: renderClock,
   })[id]?.();
 }
 
@@ -933,6 +1282,8 @@ function openAuthPanel(id) {
     note.className = "auth-note";
     note.textContent = "Google Calendar → Settings → Integrate calendar → Secret address in iCal format";
     panel.append(note);
+  } else if (id === "clock") {
+    panel.append(clockZoneEditor(err));
   } else if (id === "weather") {
     window.__TAURI__.core
       .invoke("weather_config")
@@ -3081,6 +3432,7 @@ function applyLayout() {
   renderMusic();
   renderCalendar();
   renderWeather();
+  renderClock();
   renderGpu();
   renderThermals();
   renderPerf();
@@ -3175,8 +3527,8 @@ function initLayout() {
   const editBtn = document.getElementById("edit-toggle");
   const tray = document.getElementById("widget-tray");
 
-  // Widgets with an account get a gear that opens their log-in/out panel.
-  const AUTH_WIDGETS = new Set(["discord", "github", "email", "stag", "calendar", "weather"]);
+  // Widgets with an account or settings get a gear that opens their panel.
+  const AUTH_WIDGETS = new Set(["discord", "github", "email", "stag", "calendar", "weather", "clock"]);
   // Slow-polling collectors get a poll-now button.
   const REFRESH_WIDGETS = { email: "email_refresh", github: "github_refresh", crypto: "crypto_refresh", stag: "stag_refresh", calendar: "cal_refresh", weather: "weather_refresh" };
 
@@ -3206,7 +3558,7 @@ function initLayout() {
       const auth = document.createElement("button");
       auth.className = "w-btn w-auth";
       auth.textContent = "⚙";
-      auth.title = "Account settings";
+      auth.title = id === "clock" ? "Time zones" : "Account settings";
       auth.addEventListener("click", () => {
         // Leave edit mode so the panel is interactive (edit mode disables
         // pointer events inside widgets).
@@ -3859,8 +4211,9 @@ function boardChangedByHand() {
   hideToast();
 }
 
-function showToast(text, undoable) {
+function showToast(text, undoable, kind = "auto") {
   const toast = document.getElementById("auto-toast");
+  toast.classList.toggle("auto-toast--clock", kind === "clock");
   document.getElementById("auto-toast-text").textContent = text;
   document.getElementById("auto-toast-undo").hidden = !undoable;
   toast.hidden = false;
@@ -4608,6 +4961,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initTerminal();
   initTimetable();
   initNotes(); // before initLayout(): applyLayout() re-renders the widget
+  initClock(); // likewise
   initLayout();
   initAutomation(); // before initPresetMenu(): the menu shows its rules
   initPresetMenu(); // after initLayout(): reads the board it just built

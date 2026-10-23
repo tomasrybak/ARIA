@@ -75,6 +75,20 @@ function themeConfig() {
  * @param {number} value  0–100
  */
 export function drawGauge(canvas, value) {
+  paintArc(canvas, START - SWEEP / 2 + Math.PI / 2, SWEEP, value / 100);
+}
+
+/**
+ * A full ring filling clockwise from the top, in the same theme styling as
+ * the gauges, so the CLOCK widget reads as part of the same instrument set.
+ * @param {HTMLCanvasElement} canvas
+ * @param {number} fraction  0–1
+ */
+export function drawRing(canvas, fraction) {
+  paintArc(canvas, START, 2 * Math.PI, fraction);
+}
+
+function paintArc(canvas, arcStart, sweep, fraction) {
   const cfg = themeConfig();
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
@@ -83,26 +97,25 @@ export function drawGauge(canvas, value) {
   const cy = h / 2;
   const r = w * cfg.r;
   const lineWidth = w * cfg.lw;
-  const arcStart = START - SWEEP / 2 + Math.PI / 2;
-  const filled = (SWEEP * Math.max(0, Math.min(100, value))) / 100;
+  const filled = sweep * Math.max(0, Math.min(1, fraction));
 
   ctx.clearRect(0, 0, w, h);
 
   // track
   ctx.beginPath();
-  ctx.arc(cx, cy, r, arcStart, arcStart + SWEEP);
+  ctx.arc(cx, cy, r, arcStart, arcStart + sweep);
   ctx.strokeStyle = cfg.track;
   ctx.lineWidth = lineWidth;
   ctx.lineCap = "round";
   ctx.stroke();
 
-  if (value <= 0) return;
+  if (filled <= 0) return;
 
   // fill
   ctx.beginPath();
   ctx.arc(cx, cy, r, arcStart, arcStart + filled);
   if (cfg.accentFrom) {
-    // Left-to-right matches the arc's sweep: it starts bottom-left and ends
+    // Left-to-right matches the gauge's sweep: it starts bottom-left and ends
     // bottom-right, so a fuller gauge reaches further into the accent.
     const grad = ctx.createLinearGradient(cx - r, 0, cx + r, 0);
     grad.addColorStop(0, cfg.accentFrom);

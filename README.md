@@ -16,6 +16,7 @@ Built around a student/dev workflow at ZČU, but every widget is optional and th
 | MAIL | Multi-account unread counts + recent messages, per-account filter | IMAP (read-only, never marks as seen) |
 | CRYPTO | BTC/ETH price, change + sparkline over 1D / 1M / 1Y | CoinGecko (free, no key) |
 | WEATHER | Current conditions, the next 12 hours, and a 7-day forecast at L | [Open-Meteo](https://open-meteo.com) (free, no key) |
+| CLOCK | Local time in a gauge-style ring, up to three other time zones, and a countdown or 25/5 pomodoro with a chime | Local, `localStorage` |
 | NOW PLAYING | Track info, transport controls, playlist shuffle chips | Apple Music (macOS), SMTC (Windows), MPRIS (Linux) |
 | SCREEN TIME | Daily total + top apps by foreground time | Local tracking, idle-aware |
 | NOTES | Things to do, with pins and reminders — `!` pins a line, `@17:00` sets a time | Local, `localStorage` |

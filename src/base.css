@@ -499,6 +499,10 @@
   color: #e8ac53;
 }
 
+.auto-toast--clock .auto-toast-text::before {
+  content: "⏱ ";
+}
+
 .auto-toast button {
   flex: none;
   padding: 6px 12px;
@@ -2900,6 +2904,247 @@ body.editing .w-controls {
 
 .widget--weather[data-size="s"] .wx-temp {
   font-size: 1.25rem;
+}
+
+/* ── CLOCK ──────────────────────────────────────────────────
+   The ring is drawn by gauge.js in the theme's gauge style; everything here
+   is currentColor and the accent, so it reads in every theme. M is a grid:
+   dial | zones over a full-width row of controls. */
+
+.widget--clock[data-size="m"] .widget-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  column-gap: 16px;
+  row-gap: 6px;
+}
+
+.clk-dial {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 1;
+  min-height: 0;
+  align-self: center;
+}
+
+.clk-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.clk-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.clk-time {
+  font: 600 1.8rem/1 var(--font-display, system-ui), sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.clk-time--small {
+  font-size: 0.8rem;
+  opacity: 0.55;
+}
+
+.clk-date {
+  font: 500 0.62rem/1.2 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.clk-phase {
+  font: 600 0.62rem/1.2 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent, var(--color-accent));
+  white-space: nowrap;
+}
+
+.clk-dial--break .clk-phase,
+.clk-line--break .clk-phase {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.clk-left {
+  font: 600 2rem/1 var(--font-display, system-ui), sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.clk-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.clk-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.clk-zone-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.clk-zone-name {
+  font: 500 0.8rem/1.25 "Inter", system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clk-zone-meta,
+.clk-hint {
+  font: 400 0.64rem/1.3 "Inter", system-ui, sans-serif;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
+.clk-zone-time {
+  font: 600 1.05rem/1 var(--font-display, system-ui), sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.clk-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clk-minutes {
+  width: 4.2em;
+  padding: 2px 6px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  font: 600 0.6rem/1.2 "JetBrains Mono", ui-monospace, monospace;
+}
+
+.clk-minutes::placeholder {
+  color: inherit;
+  opacity: 0.4;
+}
+
+.clk-err {
+  grid-column: 1 / -1;
+  font: 400 0.62rem/1.2 "Inter", system-ui, sans-serif;
+  color: var(--alert, #e5533d);
+}
+
+.clk-err:empty {
+  display: none;
+}
+
+/* S: one line of time, then a timer bar or a strip of zones. */
+
+.widget--clock[data-size="s"] .widget-body {
+  justify-content: center;
+  gap: 8px;
+}
+
+.clk-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.widget--clock[data-size="s"] .clk-time {
+  font-size: 2.2rem;
+}
+
+.clk-strip {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.clk-strip .clk-zone-meta {
+  display: none;
+}
+
+.clk-strip .clk-zone {
+  gap: 6px;
+}
+
+.clk-strip .clk-zone-name {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.clk-strip .clk-zone-time {
+  font-size: 0.8rem;
+}
+
+.clk-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.clk-line .clk-left {
+  font-size: 0.85rem;
+}
+
+.clk-bar {
+  position: relative;
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.2);
+  overflow: hidden;
+}
+
+.clk-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--accent, var(--color-accent));
+}
+
+.clk-line--break .clk-bar-fill {
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.clk-mini {
+  padding: 2px 6px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: 600 0.55rem/1 "JetBrains Mono", ui-monospace, monospace;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.clk-mini:hover {
+  opacity: 1;
 }
 
 /* ── Linux/WebKitGTK transparency fix ───────────────────────
