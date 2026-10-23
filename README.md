@@ -17,6 +17,7 @@ Built around a student/dev workflow at ZČU, but every widget is optional and th
 | CRYPTO | BTC/ETH price, change + sparkline over 1D / 1M / 1Y | CoinGecko (free, no key) |
 | WEATHER | Current conditions with a "rain from 15:00" line, a 12-hour temperature and rain chart, and a 7-day forecast with details at L | [Open-Meteo](https://open-meteo.com) (free, no key) |
 | CLOCK | Local time in a gauge-style ring, up to three other time zones, and a countdown or 25/5 pomodoro with a chime | Local, `localStorage` |
+| FREE GAMES | Games free to keep right now and coming next, with covers, store and time left; click opens the store page | Epic Games Store, [GamerPower](https://www.gamerpower.com) for Steam/GOG (free, no key) |
 | NOW PLAYING | Track info, transport controls, playlist shuffle chips | Apple Music (macOS), SMTC (Windows), MPRIS (Linux) |
 | SCREEN TIME | Daily total + top apps by foreground time | Local tracking, idle-aware |
 | NOTES | Things to do, with pins and reminders — `!` pins a line, `@17:00` sets a time | Local, `localStorage` |

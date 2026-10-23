@@ -87,7 +87,8 @@ pub fn run() {
             collectors::weather::weather_search,
             collectors::weather::weather_set_location,
             collectors::weather::weather_clear,
-            collectors::weather::weather_config
+            collectors::weather::weather_config,
+            collectors::freegames::freegames_refresh
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

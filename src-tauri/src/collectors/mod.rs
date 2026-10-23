@@ -2,6 +2,7 @@ pub mod calendar;
 pub mod crypto;
 pub mod discord;
 pub mod email;
+pub mod freegames;
 pub mod github;
 mod hardware;
 pub mod history;
@@ -218,5 +219,6 @@ pub fn spawn_all(app: &AppHandle) {
     email::spawn(app.clone(), rx.clone());
     calendar::spawn(app.clone(), rx.clone());
     weather::spawn(app.clone(), rx.clone());
+    freegames::spawn(app.clone(), rx.clone());
     stag::spawn(app.clone(), rx);
 }

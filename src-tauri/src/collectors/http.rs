@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-/// Shared by the keyless JSON collectors (crypto, weather): one GET, with a
+/// Shared by the keyless JSON collectors (crypto, weather, free games): one GET, with a
 /// 429 reported separately so the caller can back off instead of hammering
 /// a free tier.
 pub enum FetchError {
@@ -67,6 +67,30 @@ pub async fn get_json(client: &reqwest::Client, url: &str) -> Result<serde_json:
         .json()
         .await
         .map_err(|e| FetchError::Other(e.to_string()))
+}
+
+/// An image as a `data:` URI, for widgets that show remote art: the CSP only
+/// lets the webview load images from `data:` and the app itself.
+pub async fn get_image_data_uri(client: &reqwest::Client, url: &str, max: usize) -> Result<String, String> {
+    use base64::Engine;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| e.to_string())?;
+    let mime = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.split(';').next().unwrap_or("").trim().to_string())
+        .filter(|v| v.starts_with("image/"))
+        .ok_or("not an image")?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    if bytes.is_empty() || bytes.len() > max {
+        return Err(format!("{} bytes is not a usable image", bytes.len()));
+    }
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes)))
 }
 
 #[cfg(test)]

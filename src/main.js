@@ -42,6 +42,7 @@ import {
   zoneDiff,
   zoneLabel,
 } from "./lib/clock.js";
+import { CYCLE_MS, STORES, cycleIndex, endingSoon, endsLabel, partition, startsLabel } from "./lib/freegames.js";
 import { MIN_DAYS, anomalies, coverage, fmtHours, trends, week } from "./lib/insights.js";
 import { whatMatters, noteSession } from "./lib/matters.js";
 import {
@@ -570,6 +571,157 @@ function renderWeather() {
   });
   right.append(weatherChart(hourly), days);
   body.append(left, right);
+}
+
+// ── free games ──────────────────────────────────────────────
+// Giveaways from Epic and GamerPower, merged by the collector; what is live
+// and how long it has left is decided in lib/freegames.js against the clock,
+// so the widget re-renders on a timer as well as on each poll.
+let freeGamesData = null;
+const FG_ROWS = { m: 3, l: 6 };
+// Held while the pointer is over the widget, so S doesn't move on just as
+// you go to click the game it shows.
+let fgHover = false;
+
+function initFreeGames() {
+  const widget = document.getElementById("widget-freegames");
+  widget.addEventListener("pointerenter", () => (fgHover = true));
+  widget.addEventListener("pointerleave", () => (fgHover = false));
+  // Live/upcoming and "ends in" move with the clock, not only with a poll.
+  setInterval(() => fgHover || renderFreeGames(), 60_000);
+  // S rotates on CYCLE_MS boundaries; re-aimed each time so it doesn't drift.
+  const step = () => {
+    if (!fgHover && widget.dataset.size === "s") renderFreeGames();
+    setTimeout(step, CYCLE_MS - (Date.now() % CYCLE_MS));
+  };
+  setTimeout(step, CYCLE_MS - (Date.now() % CYCLE_MS));
+}
+
+function openLink(url) {
+  const opener = window.__TAURI__.opener;
+  const open = opener?.openUrl
+    ? opener.openUrl(url)
+    : window.__TAURI__.core.invoke("plugin:opener|open_url", { url });
+  Promise.resolve(open).catch((e) => console.error("open failed:", e));
+}
+
+function fgWhen(g, now) {
+  return g.starts_at != null && g.starts_at > now ? startsLabel(g.starts_at, now) : endsLabel(g.ends_at, now);
+}
+
+function fgCover(g, cls) {
+  const cover = document.createElement("div");
+  cover.className = cls;
+  if (g.thumb) {
+    const img = document.createElement("img");
+    img.src = g.thumb;
+    img.alt = "";
+    img.loading = "lazy";
+    cover.append(img);
+  } else {
+    cover.classList.add(`${cls}--empty`);
+    cover.textContent = STORES[g.store] ?? g.store;
+  }
+  return cover;
+}
+
+function fgMeta(g, now) {
+  const meta = document.createElement("div");
+  meta.className = "fg-meta";
+  meta.append(wxSpan("fg-store", STORES[g.store] ?? g.store));
+  const when = fgWhen(g, now);
+  if (when) {
+    const soon = g.starts_at == null && endingSoon(g, now);
+    meta.append(wxSpan(`fg-when${soon ? " fg-when--soon" : ""}`, when));
+  }
+  if (g.worth) meta.append(wxSpan("fg-worth", g.worth));
+  return meta;
+}
+
+function fgItem(g, now, cls) {
+  const item = document.createElement("button");
+  item.className = cls;
+  if (g.starts_at != null && g.starts_at > now) item.classList.add("is-upcoming");
+  item.title = `${g.title} · ${STORES[g.store] ?? g.store}`;
+  item.addEventListener("click", () => openLink(g.url));
+  return item;
+}
+
+function renderFreeGames() {
+  const widget = document.getElementById("widget-freegames");
+  if (!widget || !freeGamesData) return;
+  const body = widget.querySelector(".widget-body");
+  const p = freeGamesData;
+  body.replaceChildren();
+  if (p.status !== "connected") {
+    body.append(wxSpan("disconnected", p.reason));
+    return;
+  }
+
+  const size = widget.dataset.size;
+  const now = Date.now();
+  const { live, upcoming } = partition(p.games, now);
+  const credit = wxSpan(
+    "wx-credit",
+    p.failed.length ? `${p.failed.join(", ")} unavailable` : "Epic · GamerPower",
+  );
+
+  if (size === "s") {
+    const row = document.createElement("div");
+    row.className = "fg-s";
+    const count = document.createElement("div");
+    count.className = "fg-count";
+    count.append(wxSpan("fg-count-n", String(live.length)), wxSpan("fg-count-label", "free now"));
+    // The rotation includes upcoming games, so the count says they're there.
+    if (upcoming.length) count.append(wxSpan("fg-count-label fg-count-soon", `+${upcoming.length} soon`));
+    row.append(count);
+    const all = [...live, ...upcoming];
+    const at = cycleIndex(now, all.length);
+    const top = all[at];
+    if (top) {
+      const item = fgItem(top, now, "fg-headline");
+      item.append(wxSpan("fg-title", top.title), fgMeta(top, now));
+      if (all.length > 1) {
+        const dots = document.createElement("div");
+        dots.className = "fg-dots";
+        all.forEach((_, i) => dots.append(wxSpan(i === at ? "fg-dot fg-dot--on" : "fg-dot", "")));
+        item.append(dots);
+      }
+      row.append(item, fgCover(top, "fg-thumb fg-thumb--s"));
+    }
+    body.append(row);
+    return;
+  }
+
+  const shown = [...live, ...upcoming].slice(0, FG_ROWS[size] ?? 3);
+  if (!shown.length) {
+    body.append(wxSpan("fg-empty", "No free games right now."), credit);
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = size === "l" ? "fg-grid" : "fg-list";
+  // Four or fewer fill a 2-wide grid; a fixed 3 would leave empty slots.
+  if (size === "l") list.style.gridTemplateColumns = `repeat(${shown.length > 4 ? 3 : 2}, minmax(0, 1fr))`;
+  for (const g of shown) {
+    if (size === "l") {
+      // L: the cover is the card, title and details over its lower edge.
+      const card = fgItem(g, now, "fg-card");
+      const caption = document.createElement("div");
+      caption.className = "fg-caption";
+      caption.append(wxSpan("fg-title", g.title), fgMeta(g, now));
+      card.append(fgCover(g, "fg-cover"), caption);
+      if (card.classList.contains("is-upcoming")) card.append(wxSpan("fg-chip", "SOON"));
+      list.append(card);
+    } else {
+      const row = fgItem(g, now, "fg-row");
+      const text = document.createElement("div");
+      text.className = "fg-text";
+      text.append(wxSpan("fg-title", g.title), fgMeta(g, now));
+      row.append(fgCover(g, "fg-thumb"), text);
+      list.append(row);
+    }
+  }
+  body.append(list, credit);
 }
 
 // ── clock ───────────────────────────────────────────────────
@@ -2884,6 +3036,11 @@ async function initCollectors() {
     renderWeather();
   });
 
+  on("freegames", (e) => {
+    freeGamesData = e.payload;
+    renderFreeGames();
+  });
+
   on("crypto", (e) => {
     cryptoData = e.payload;
     renderCrypto();
@@ -3544,6 +3701,7 @@ function applyLayout() {
   renderCalendar();
   renderWeather();
   renderClock();
+  renderFreeGames();
   renderGpu();
   renderThermals();
   renderPerf();
@@ -3641,7 +3799,7 @@ function initLayout() {
   // Widgets with an account or settings get a gear that opens their panel.
   const AUTH_WIDGETS = new Set(["discord", "github", "email", "stag", "calendar", "weather", "clock"]);
   // Slow-polling collectors get a poll-now button.
-  const REFRESH_WIDGETS = { email: "email_refresh", github: "github_refresh", crypto: "crypto_refresh", stag: "stag_refresh", calendar: "cal_refresh", weather: "weather_refresh" };
+  const REFRESH_WIDGETS = { email: "email_refresh", github: "github_refresh", crypto: "crypto_refresh", stag: "stag_refresh", calendar: "cal_refresh", weather: "weather_refresh", freegames: "freegames_refresh" };
 
   for (const id of Object.keys(WIDGETS)) {
     const el = widgetEl(id);
@@ -5073,6 +5231,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initTimetable();
   initNotes(); // before initLayout(): applyLayout() re-renders the widget
   initClock(); // likewise
+  initFreeGames();
   initLayout();
   initAutomation(); // before initPresetMenu(): the menu shows its rules
   initPresetMenu(); // after initLayout(): reads the board it just built
