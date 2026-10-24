@@ -1339,6 +1339,17 @@ function mailAccountForm(err) {
   const host = authInput("imap host");
   const user = authInput("user / e-mail");
   const pass = authInput("password", "password");
+  // Gmail refuses the account password over IMAP; only an app password works.
+  const gmailNote = document.createElement("div");
+  gmailNote.className = "auth-note";
+  gmailNote.textContent =
+    "Gmail needs an app password: myaccount.google.com/apppasswords (2-Step Verification must be on)";
+  gmailNote.hidden = true;
+  const checkGmail = () => {
+    gmailNote.hidden = !/g(oogle)?mail\.com/i.test(`${host.value} ${user.value}`);
+  };
+  host.addEventListener("input", checkGmail);
+  user.addEventListener("input", checkGmail);
   const btn = authButton("ADD ACCOUNT", async (b) => {
     const ok = await invokeAuth(b, err, "mail_add_account", {
       label: label.value,
@@ -1350,7 +1361,7 @@ function mailAccountForm(err) {
     // updated account list immediately.
     if (ok && authPanelId === "email") openAuthPanel("email");
   });
-  form.append(label, host, user, pass, btn);
+  form.append(label, host, user, gmailNote, pass, btn);
   return form;
 }
 
