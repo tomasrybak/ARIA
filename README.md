@@ -100,6 +100,25 @@ Each service widget has its own login: disconnected widgets show a login form in
 
 Nothing leaves your machine except the API calls to the services themselves.
 
+## Install
+
+Download the installer for your system from [Releases](https://github.com/tomasrybak/ARIA/releases):
+
+| System | File |
+|---|---|
+| macOS (Apple Silicon and Intel) | `ARIA_<version>_universal.dmg` |
+| Windows 10/11 | `ARIA_<version>_x64-setup.exe` (or the `.msi`) |
+| Ubuntu, Pop!_OS, Debian | `ARIA_<version>_amd64.deb` |
+| Fedora | `ARIA-<version>-1.x86_64.rpm` |
+| Any other Linux | `ARIA_<version>_amd64.AppImage` |
+
+The builds are not code-signed, so macOS and Windows ask once before the first run:
+
+- **macOS** says the app is damaged or from an unidentified developer. After dragging it to Applications, run `xattr -cr /Applications/ARIA.app` once in Terminal, then open it normally.
+- **Windows** SmartScreen shows *Windows protected your PC*: click **More info** → **Run anyway**.
+
+The per-OS notes below (permissions, optional tools such as `playerctl` or `nvidia-smi`) apply to the installed app too.
+
 ## Setup
 
 ### Prerequisites (all platforms)
@@ -109,7 +128,7 @@ Nothing leaves your machine except the API calls to the services themselves.
 - Platform Tauri deps: see [tauri.app prerequisites](https://tauri.app/start/prerequisites/) (Xcode CLT on macOS, WebView2 on Windows, `webkit2gtk` etc. on Linux)
 
 ```sh
-git clone https://github.com/Tern04/ARIA.git
+git clone https://github.com/tomasrybak/ARIA.git
 cd ARIA
 npm install
 npm run tauri dev     # development

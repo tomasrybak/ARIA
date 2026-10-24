@@ -1,0 +1,88 @@
+# Release builds for macOS (universal), Windows and Linux.
+#
+# Runs on a pushed version tag (v0.1.0, ...) or by hand from the Actions tab.
+# Tests gate the builds; the installers land on a draft GitHub Release that
+# stays private until it is published by hand.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # WebKitGTK 4.1 + the system libraries the Linux build links: appindicator
+  # for the tray, librsvg for icons, libdbus for the keyring and Mutter's idle
+  # monitor, libssl for native-tls (IMAP), patchelf for the AppImage.
+  LINUX_DEPS: >-
+    libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+    libxdo-dev libssl-dev libdbus-1-dev pkg-config patchelf
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
+      - run: npm ci
+      - run: npm test
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One .app for Apple Silicon and Intel alike.
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: windows-latest
+            args: ""
+          # Built on the older Ubuntu so the binary's glibc floor is 22.04's,
+          # which every newer distro (24.04, Pop!_OS) satisfies.
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - if: matrix.platform == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: ARIA v__VERSION__
+          releaseDraft: true
+          releaseBody: |
+            Unsigned builds; see "Install" in the README for the one-time
+            step macOS and Windows ask for.
+
+            - **macOS** (Apple Silicon and Intel): `.dmg`
+            - **Windows**: `-setup.exe` or `.msi`
+            - **Linux**: `.deb` (Ubuntu, Pop!_OS, Debian), `.rpm` (Fedora), `.AppImage` (any)
+          args: ${{ matrix.args }}
