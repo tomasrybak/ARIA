@@ -74,7 +74,10 @@ import {
   removeNote,
   toggleNote,
 } from "./lib/notes.js";
+import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import {
+  BUILTIN_PRESETS,
+  MAX_NAME,
   MAX_PRESETS,
   applyBuiltins,
   boardToLayout,
@@ -3737,7 +3740,7 @@ function renderCatalogue() {
       card.classList.toggle("on", onBoard);
       const name = document.createElement("span");
       name.className = "tray-card-name";
-      name.textContent = widgetEl(id).querySelector(".widget-label").firstChild.textContent.trim();
+      name.textContent = widgetName(id);
       const state = document.createElement("span");
       state.className = "tray-card-state";
       state.textContent = onBoard ? "✓ On board" : "+ Add";
@@ -4380,6 +4383,320 @@ function initPresetMenu() {
   });
 }
 
+/* ── board builder ──────────────────────────────────────────
+   "Build a board": purpose → picks → density, then the generated board shown
+   for real on the grid. The board under the dialog is only a preview until
+   the user commits: it is applied without saveLayout(), so Back or cancel puts
+   the snapshot back with nothing persisted and no hand edit recorded.
+   Placement lives in lib/boardgen.js. */
+
+const BUILD_STEPS = ["Purpose", "Widgets", "Layout"];
+const DENSITIES = [
+  ["glanceable", "Glanceable", "Small tiles along the bottom, the wallpaper stays in view"],
+  ["detailed", "Detailed", "Fills the board; widgets higher in the list below get the most room"],
+];
+// Open flow state, or null. `picks` is in priority order.
+let builder = null;
+
+function widgetName(id) {
+  return widgetEl(id).querySelector(".widget-label").firstChild.textContent.trim();
+}
+
+function openBuilder() {
+  if (builder) return;
+  const tray = document.getElementById("widget-tray");
+  if (document.body.classList.contains("editing")) document.getElementById("edit-toggle").click();
+  tray.hidden = true;
+  builder = { step: 0, purpose: null, picks: [], density: "detailed", snapshot: structuredClone(layout), result: null };
+  document.getElementById("builder").hidden = false;
+  renderBuilder();
+}
+
+/** Close the flow; without `keep`, the board from before it goes back. */
+function closeBuilder(keep) {
+  if (!builder) return;
+  if (!keep) {
+    layout = builder.snapshot;
+    applyLayout();
+  }
+  builder = null;
+  document.getElementById("builder").hidden = true;
+  document.getElementById("builder-bar").hidden = true;
+}
+
+function previewBoard() {
+  builder.result = generateBoard(builder.picks, builder.density, WIDGETS);
+  layout = boardToLayout(builder.result.board, defaultLayout());
+  applyLayout();
+  document.getElementById("builder").hidden = true;
+  renderBuilderBar(false);
+}
+
+function backToDialog() {
+  layout = structuredClone(builder.snapshot);
+  applyLayout();
+  document.getElementById("builder-bar").hidden = true;
+  document.getElementById("builder").hidden = false;
+  renderBuilder();
+}
+
+function builderButton(text, onClick, cls = "") {
+  const b = document.createElement("button");
+  b.className = cls;
+  b.textContent = text;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function renderBuilder() {
+  const body = document.getElementById("builder-body");
+  const foot = document.getElementById("builder-foot");
+  const dots = document.getElementById("builder-dots");
+  body.replaceChildren();
+  foot.replaceChildren();
+  dots.replaceChildren(
+    ...BUILD_STEPS.map((label, i) => {
+      const d = document.createElement("span");
+      d.className = "builder-dot";
+      d.classList.toggle("done", i < builder.step);
+      d.classList.toggle("current", i === builder.step);
+      d.textContent = label;
+      return d;
+    }),
+  );
+
+  const go = (step) => {
+    builder.step = step;
+    renderBuilder();
+  };
+
+  if (builder.step === 0) {
+    const q = document.createElement("p");
+    q.className = "builder-q";
+    q.textContent = "What is this board for?";
+    const grid = document.createElement("div");
+    grid.className = "builder-choices";
+    for (const p of PURPOSES) {
+      const b = builderButton("", () => {
+        // Keep hand-made picks when coming back to the purpose already chosen.
+        if (builder.purpose !== p) builder.picks = [...p.picks];
+        builder.purpose = p;
+        go(1);
+      }, "builder-choice");
+      b.classList.toggle("active", builder.purpose === p);
+      const name = document.createElement("strong");
+      name.textContent = p.label;
+      const what = document.createElement("span");
+      what.textContent = p.picks.length ? p.picks.map(widgetName).join(", ") : "Pick everything yourself";
+      b.append(name, what);
+      grid.append(b);
+    }
+    body.append(q, grid);
+    return;
+  }
+
+  if (builder.step === 1) {
+    const q = document.createElement("p");
+    q.className = "builder-q";
+    q.textContent = "Which widgets? The first ones ticked get the most room.";
+    const cols = document.createElement("div");
+    cols.className = "builder-picks";
+    for (const [key, label] of CATEGORIES) {
+      const col = document.createElement("div");
+      const head = document.createElement("h3");
+      head.textContent = label;
+      col.append(head);
+      for (const [id, w] of Object.entries(WIDGETS)) {
+        if (w.cat !== key) continue;
+        const row = document.createElement("label");
+        row.className = "builder-pick";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = builder.picks.includes(id);
+        box.addEventListener("change", () => {
+          builder.picks = box.checked ? [...builder.picks, id] : builder.picks.filter((p) => p !== id);
+          renderBuilder();
+        });
+        const name = document.createElement("span");
+        name.textContent = widgetName(id);
+        const rank = document.createElement("em");
+        const at = builder.picks.indexOf(id);
+        rank.textContent = at >= 0 ? `#${at + 1}` : "";
+        row.title = w.blurb;
+        row.append(box, name, rank);
+        col.append(row);
+      }
+      cols.append(col);
+    }
+    body.append(q, cols);
+    foot.append(
+      builderButton("Back", () => go(0), "builder-ghost"),
+      builderButton(`Next · ${builder.picks.length} widgets`, () => go(2), "builder-next"),
+    );
+    foot.lastChild.disabled = !builder.picks.length;
+    return;
+  }
+
+  const q = document.createElement("p");
+  q.className = "builder-q";
+  q.textContent = "How much should each widget show?";
+  const grid = document.createElement("div");
+  grid.className = "builder-choices builder-choices--two";
+  for (const [key, label, hint] of DENSITIES) {
+    const b = builderButton("", () => {
+      builder.density = key;
+      renderBuilder();
+    }, "builder-choice");
+    b.classList.toggle("active", builder.density === key);
+    const name = document.createElement("strong");
+    name.textContent = label;
+    const what = document.createElement("span");
+    what.textContent = hint;
+    b.append(name, what);
+    grid.append(b);
+  }
+
+  // The order is the generator's priority: it decides who grows and who gives way.
+  const q2 = document.createElement("p");
+  q2.className = "builder-q builder-q--gap";
+  q2.textContent = "What matters most? Higher up gets more room and is the last to be dropped.";
+  const order = document.createElement("ol");
+  order.className = "builder-order";
+  const move = (from, to) => {
+    const picks = [...builder.picks];
+    picks.splice(to, 0, picks.splice(from, 1)[0]);
+    builder.picks = picks;
+    renderBuilder();
+  };
+  builder.picks.forEach((id, at) => {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = widgetName(id);
+    const blurb = document.createElement("em");
+    blurb.textContent = WIDGETS[id].blurb;
+    const top = builderButton("⤒", () => move(at, 0), "builder-move");
+    top.title = "Move to the top";
+    const up = builderButton("▲", () => move(at, at - 1), "builder-move");
+    up.title = "Move up";
+    const down = builderButton("▼", () => move(at, at + 1), "builder-move");
+    down.title = "Move down";
+    top.disabled = up.disabled = at === 0;
+    down.disabled = at === builder.picks.length - 1;
+    li.append(name, blurb, top, up, down);
+    order.append(li);
+  });
+  body.append(q, grid, q2, order);
+  foot.append(
+    builderButton("Back", () => go(1), "builder-ghost"),
+    builderButton("Preview board", previewBoard, "builder-next"),
+  );
+}
+
+/** A free name: the purpose's, numbered when a preset already has it. */
+function freePresetName(base) {
+  const taken = new Set(presets.map((p) => p.name));
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) if (!taken.has(`${base} ${n}`)) return `${base} ${n}`;
+}
+
+function renderBuilderBar(saving) {
+  const bar = document.getElementById("builder-bar");
+  bar.replaceChildren();
+  bar.hidden = false;
+  const { board, dropped } = builder.result;
+  const shown = Object.values(board).filter((p) => !p.hidden).length;
+  const text = document.createElement("span");
+  text.className = "builder-bar-text";
+  text.textContent =
+    `Preview · ${shown} widget${shown === 1 ? "" : "s"}` +
+    (dropped.length ? ` · didn't fit: ${dropped.map(widgetName).join(", ")}` : "");
+  bar.append(text);
+
+  if (!saving) {
+    bar.append(
+      builderButton("Back", backToDialog, "builder-ghost"),
+      builderButton("Use once", () => {
+        closeBuilder(true);
+        saveLayout();
+        showToast("Board applied", false);
+      }, "builder-ghost"),
+      builderButton("Save as preset…", () => renderBuilderBar(true), "builder-next"),
+    );
+    return;
+  }
+
+  const form = document.createElement("form");
+  form.className = "builder-save";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = MAX_NAME;
+  input.spellcheck = false;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "Preset name");
+  input.value = freePresetName(builder.purpose?.picks.length ? builder.purpose.label : "My board");
+  const builtin = BUILTIN_PRESETS.find((b) => b.name === builder.purpose?.builtin);
+  const auto = document.createElement("label");
+  auto.className = "builder-auto";
+  const autoBox = document.createElement("input");
+  autoBox.type = "checkbox";
+  auto.append(autoBox, ` Switch automatically (${TRIGGER_LABELS[builtin?.trigger.kind]})`);
+  auto.hidden = !builtin;
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "builder-next";
+  const note = document.createElement("span");
+  note.className = "builder-note";
+  // A new name past the cap would make withPreset evict the oldest preset.
+  const update = () => {
+    const name = normalizeName(input.value);
+    const exists = presets.some((p) => p.name === name);
+    const full = !exists && presets.length >= MAX_PRESETS;
+    save.textContent = exists ? "Replace" : "Save";
+    save.disabled = !name || full;
+    note.textContent = full ? `${MAX_PRESETS} presets is the limit; delete one first` : "";
+  };
+  input.addEventListener("input", update);
+  update();
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = normalizeName(input.value);
+    if (!name || save.disabled) return;
+    presets = withPreset(presets, name, layout, WIDGETS);
+    persistPresets();
+    if (builtin) {
+      if (autoBox.checked) automation.rules[name] = sanitizeTrigger(builtin.trigger);
+      else delete automation.rules[name];
+      persistAutomation();
+    }
+    closeBuilder(true);
+    showBoard(presets.find((p) => p.name === name));
+    renderPresetMenu();
+    showToast(`Saved "${name}"`, false);
+  });
+  form.append(input, auto, save, builderButton("Cancel", (e) => {
+    e.preventDefault();
+    renderBuilderBar(false);
+  }, "builder-ghost"), note);
+  bar.append(form);
+  input.focus();
+  input.select();
+}
+
+function initBuilder() {
+  document.getElementById("tray-build").addEventListener("click", openBuilder);
+  document.getElementById("preset-build").addEventListener("click", () => {
+    document.getElementById("preset-menu").hidden = true;
+    openBuilder();
+  });
+  document.getElementById("builder-close").addEventListener("click", () => closeBuilder(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !builder) return;
+    if (!document.getElementById("builder").hidden) closeBuilder(false);
+    else if (document.querySelector(".builder-save")) renderBuilderBar(false);
+    else backToDialog();
+  });
+}
+
 /* ── auto-switching ─────────────────────────────────────────
    Presets that apply themselves: a game takes focus and the Gaming board
    comes up, the game closes and the board you had comes back. The timing
@@ -4485,7 +4802,8 @@ function onActivity({ app, label, idle, presence }) {
 }
 
 function autoTick() {
-  if (!autoState) return;
+  // A rule must not swap the board out from under an open builder preview.
+  if (!autoState || builder) return;
   const now = Date.now();
   const signals = {
     app: focusedApp,
@@ -5310,6 +5628,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initLayout();
   initAutomation(); // before initPresetMenu(): the menu shows its rules
   initPresetMenu(); // after initLayout(): reads the board it just built
+  initBuilder();
   initGauges();
   initPinToggle();
   initMusicControls();

@@ -157,6 +157,7 @@
             <div class="theme-menu preset-menu" id="preset-menu" hidden>
               <div class="preset-list" id="preset-list"></div>
               <button class="preset-save" id="preset-save">+ Save current board</button>
+              <button class="preset-save" id="preset-build">✦ Build a board</button>
               <form class="preset-new" id="preset-new" hidden>
                 <input id="preset-name" type="text" placeholder="preset name" maxlength="24"
                        autocomplete="off" spellcheck="false" aria-label="Preset name" />
@@ -491,6 +492,7 @@
       <div class="widget-tray" id="widget-tray" hidden>
         <div class="tray-head">
           <span class="tray-label">WIDGETS</span>
+          <button class="tray-build" id="tray-build" title="Generate a board from a few questions">✦ BUILD</button>
           <button class="tray-reset" id="tray-reset">RESET LAYOUT</button>
           <button class="tray-fold" id="tray-fold" title="Fold the panel" aria-expanded="true">▸</button>
         </div>
@@ -501,6 +503,18 @@
     <div class="win-move" id="win-move" title="Move window">✥ move</div>
     <div class="win-resize" id="win-resize" title="Resize window"></div>
     <!-- Auto-switch notice: which preset applied itself and why, with Undo. -->
+    <div class="builder" id="builder" hidden>
+      <div class="builder-card" role="dialog" aria-modal="true" aria-labelledby="builder-title">
+        <div class="builder-head">
+          <h2 id="builder-title">Build a board</h2>
+          <div class="builder-dots" id="builder-dots"></div>
+          <button class="builder-close" id="builder-close" title="Cancel" aria-label="Cancel">×</button>
+        </div>
+        <div class="builder-body" id="builder-body"></div>
+        <div class="builder-foot" id="builder-foot"></div>
+      </div>
+    </div>
+    <div class="builder-bar" id="builder-bar" role="status" hidden></div>
     <div class="auto-toast" id="auto-toast" role="status" hidden>
       <span class="auto-toast-text" id="auto-toast-text"></span>
       <button id="auto-toast-undo">Undo</button>
