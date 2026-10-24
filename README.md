@@ -1,5 +1,14 @@
 # ARIA
 
+[![Latest release](https://img.shields.io/github/v/release/tomasrybak/ARIA?label=release&color=7fb7ff)](https://github.com/tomasrybak/ARIA/releases/latest)
+[![Release build](https://github.com/tomasrybak/ARIA/actions/workflows/release.yml/badge.svg)](https://github.com/tomasrybak/ARIA/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
+![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
+![Rust](https://img.shields.io/badge/core-Rust-B7410E?logo=rust&logoColor=white)
+
+**[Download the latest release](https://github.com/tomasrybak/ARIA/releases/latest)** · [Install](#install) · [Widgets](#widgets) · [Build from source](#setup)
+
 **Autonomous Reactive Intelligent Assistant** — a desktop HUD dashboard that lives on your wallpaper: below your windows, above the background, Rainmeter-style. One transparent, frameless [Tauri](https://tauri.app) window renders live widgets; all data collection runs in the Rust core. No browser, no Electron, no cloud.
 
 Built around a student/dev workflow at ZČU, but every widget is optional and the board is fully rearrangeable.
@@ -114,8 +123,12 @@ Download the installer for your system from [Releases](https://github.com/tomasr
 
 The builds are not code-signed, so macOS and Windows ask once before the first run:
 
-- **macOS** says the app is damaged or from an unidentified developer. After dragging it to Applications, run `xattr -cr /Applications/ARIA.app` once in Terminal, then open it normally.
+- **macOS** says *"ARIA" Not Opened* (Apple could not verify it). Drag ARIA from the `.dmg` to Applications, then either:
+  - run `xattr -cr /Applications/ARIA.app` once in Terminal and open it normally, or
+  - open it once, click **Done**, then **System Settings → Privacy & Security → Open Anyway** and confirm.
 - **Windows** SmartScreen shows *Windows protected your PC*: click **More info** → **Run anyway**.
+
+**Updating** replaces only the app: boards, settings and notes stay where they are, and passwords stay in the system keychain. On macOS an update may ask once per stored password whether ARIA may use it — choose **Always Allow** (an unsigned build gets a new signature with every release).
 
 The per-OS notes below (permissions, optional tools such as `playerctl` or `nvidia-smi`) apply to the installed app too.
 
