@@ -489,9 +489,13 @@
       </div>
 
       <div class="widget-tray" id="widget-tray" hidden>
-        <span class="tray-label">HIDDEN</span>
-        <div class="tray-chips" id="tray-chips"></div>
-        <button class="tray-reset" id="tray-reset">RESET LAYOUT</button>
+        <div class="tray-head">
+          <span class="tray-label">WIDGETS</span>
+          <button class="tray-reset" id="tray-reset">RESET LAYOUT</button>
+          <button class="tray-fold" id="tray-fold" title="Fold the panel" aria-expanded="true">▸</button>
+        </div>
+        <p class="tray-hint">Drag a widget to move it, the size button resizes it. Click a card to add or remove it.</p>
+        <div class="tray-cats" id="tray-cats"></div>
       </div>
     </div>
     <div class="win-move" id="win-move" title="Move window">✥ move</div>

@@ -2,7 +2,7 @@ import { drawGauge, drawRing } from "./gauge.js";
 import { progressAt } from "./lib/music.js";
 import { HISTORY_LEN, autoScale, latest, peak, pushSample, seriesPaths } from "./lib/history.js";
 import { applyTerminalTheme, initTerminal, syncTerminal } from "./lib/terminal.js";
-import { WIDGETS, defaultLayout } from "./lib/widgets.js";
+import { CATEGORIES, WIDGETS, defaultLayout } from "./lib/widgets.js";
 import {
   WET,
   dayLabel,
@@ -3679,18 +3679,12 @@ const fits = (rect, ignoreId) => fitsIn(rect, ignoreId, layout, WIDGETS);
 const findFreeSpot = (w, h, ignoreId) => findFreeSpotIn(w, h, ignoreId, layout, WIDGETS);
 
 function applyLayout() {
-  const chips = document.getElementById("tray-chips");
-  chips.replaceChildren();
+  renderCatalogue();
   for (const id of Object.keys(WIDGETS)) {
     const el = widgetEl(id);
     const p = layout[id];
     if (p.hidden) {
       el.style.display = "none";
-      const chip = document.createElement("button");
-      chip.className = "tray-chip";
-      chip.textContent = `+ ${el.querySelector(".widget-label").textContent}`;
-      chip.addEventListener("click", () => showWidget(id));
-      chips.append(chip);
     } else {
       const [w, h] = WIDGETS[id].sizes[p.size];
       el.style.display = "";
@@ -3721,6 +3715,53 @@ function applyLayout() {
   syncTerminal();
 }
 
+/**
+ * The edit panel: every widget, grouped by category. It lists the whole
+ * catalogue rather than only the hidden ones, so a card is both the way onto
+ * the board and the way off it.
+ */
+function renderCatalogue() {
+  const cats = document.getElementById("tray-cats");
+  cats.replaceChildren();
+  for (const [key, label] of CATEGORIES) {
+    const col = document.createElement("section");
+    col.className = "tray-cat";
+    const head = document.createElement("h3");
+    head.textContent = label;
+    col.append(head);
+    for (const [id, w] of Object.entries(WIDGETS)) {
+      if (w.cat !== key) continue;
+      const onBoard = !layout[id].hidden;
+      const card = document.createElement("button");
+      card.className = "tray-card";
+      card.classList.toggle("on", onBoard);
+      const name = document.createElement("span");
+      name.className = "tray-card-name";
+      name.textContent = widgetEl(id).querySelector(".widget-label").firstChild.textContent.trim();
+      const state = document.createElement("span");
+      state.className = "tray-card-state";
+      state.textContent = onBoard ? "✓ On board" : "+ Add";
+      const blurb = document.createElement("span");
+      blurb.className = "tray-card-blurb";
+      blurb.textContent = w.blurb;
+      const sizes = document.createElement("span");
+      sizes.className = "tray-card-sizes";
+      sizes.textContent = Object.keys(w.sizes).join(" · ").toUpperCase();
+      card.append(name, state, blurb, sizes);
+      card.title = onBoard ? "Remove from the board" : "Add to the board";
+      card.addEventListener("click", () => (onBoard ? hideWidget(id) : showWidget(id)));
+      col.append(card);
+    }
+    cats.append(col);
+  }
+}
+
+function hideWidget(id) {
+  layout[id].hidden = true;
+  saveLayout();
+  applyLayout();
+}
+
 function showWidget(id) {
   const p = layout[id];
   // Prefer the size it was hidden at; fall back to smaller ones.
@@ -3735,6 +3776,7 @@ function showWidget(id) {
       return;
     }
   }
+  showToast("No room for it. Shrink or remove a widget first.", false);
 }
 
 function cycleSize(id) {
@@ -3768,6 +3810,7 @@ function initDrag(id, el, grid) {
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
     el.classList.add("dragging");
+    document.body.classList.add("dragging-widget");
     const box = grid.getBoundingClientRect();
     const { w, h } = rectOf(id);
     // Keep the grab point under the cursor while snapping to cells.
@@ -3793,12 +3836,15 @@ function initDrag(id, el, grid) {
     };
     const onUp = () => {
       el.classList.remove("dragging");
+      document.body.classList.remove("dragging-widget");
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
       saveLayout();
     };
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
   });
 }
 
@@ -3857,21 +3903,39 @@ function initLayout() {
     hide.className = "w-btn w-hide";
     hide.textContent = "×";
     hide.title = "Hide widget";
-    hide.addEventListener("click", () => {
-      layout[id].hidden = true;
-      saveLayout();
-      applyLayout();
-    });
+    hide.addEventListener("click", () => hideWidget(id));
     controls.append(size, hide);
     el.append(controls);
     initDrag(id, el, grid);
   }
 
   editBtn.addEventListener("click", () => {
+    // Line the drawer up with the board's edges, which differ per theme.
+    // Measured before `editing` narrows the board.
+    if (!document.body.classList.contains("editing")) {
+      const box = grid.getBoundingClientRect();
+      tray.style.top = `${box.top}px`;
+      tray.style.right = `${window.innerWidth - box.right}px`;
+      tray.style.bottom = `${window.innerHeight - box.bottom}px`;
+    }
     const editing = document.body.classList.toggle("editing");
     editBtn.classList.toggle("active", editing);
     tray.hidden = !editing;
     if (editing) refreshFilled(); // the window grips only show in edit mode
+  });
+
+  const fold = document.getElementById("tray-fold");
+  fold.addEventListener("click", () => {
+    const folded = tray.classList.toggle("folded");
+    document.body.classList.toggle("tray-folded", folded);
+    fold.setAttribute("aria-expanded", String(!folded));
+    fold.textContent = folded ? "◂" : "▸";
+    fold.title = folded ? "Show the widgets" : "Fold the panel";
+  });
+
+  // Folded, the whole tab is the target, not just the arrow.
+  tray.addEventListener("click", (e) => {
+    if (tray.classList.contains("folded") && !fold.contains(e.target)) fold.click();
   });
 
   document.getElementById("tray-reset").addEventListener("click", () => {

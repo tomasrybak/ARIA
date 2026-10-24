@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WIDGETS, defaultLayout } from "../src/lib/widgets.js";
+import { CATEGORIES, WIDGETS, defaultLayout } from "../src/lib/widgets.js";
 import { GRID_COLS, GRID_ROWS, normalizeLayout, overlaps, rectOf } from "../src/lib/layout.js";
 import {
   BUILTIN_PRESETS,
@@ -32,6 +32,15 @@ test("every preset fits inside the grid", () => {
     for (const [size, [cols, rows]] of Object.entries(w.sizes)) {
       assert.ok(cols <= GRID_COLS && rows <= GRID_ROWS, `${id}.${size} is ${cols}x${rows}`);
     }
+  }
+});
+
+test("every widget has a known category and a blurb", () => {
+  // The edit panel lists widgets by category; one without would be missing from it.
+  const cats = new Set(CATEGORIES.map(([key]) => key));
+  for (const [id, w] of entries) {
+    assert.ok(cats.has(w.cat), `${id} has category ${w.cat}`);
+    assert.ok(typeof w.blurb === "string" && w.blurb.trim(), `${id} has no blurb`);
   }
 });
 
