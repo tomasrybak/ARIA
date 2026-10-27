@@ -98,12 +98,14 @@ export function parseAutomation(raw) {
  *
  * `signals`:
  *   app     name of the focused app (never ARIA itself), or null
+ *   game    { id, name } of the Steam game running, focused or not, or null
  *   gpu     GPU load in percent, or null when unknown or stale
  *   agenda  [{ title, start, end }] in epoch ms
  */
 export function triggerReason(trigger, signals, now) {
   switch (trigger?.kind) {
     case "game":
+      if (signals.game) return `${signals.game.name} running`;
       return isGameApp(signals.app) ? `${signals.app} in focus` : null;
     case "app": {
       const app = String(signals.app ?? "").toLowerCase();

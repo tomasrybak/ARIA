@@ -21,7 +21,7 @@ const GAME = "Steam_app_730";
 function run(settings, ticks, state = initialState(null, 0)) {
   const actions = [];
   for (const [now, signals] of ticks) {
-    const out = step(state, settings, order, { app: null, gpu: null, agenda: [], ...signals }, now);
+    const out = step(state, settings, order, { app: null, game: null, gpu: null, agenda: [], ...signals }, now);
     state = out.state;
     if (out.action) actions.push({ at: now, ...out.action });
   }
@@ -103,6 +103,37 @@ test("alt-tabbing out of a game briefly keeps the board", () => {
   ];
   const { actions } = run(cfg({ Gaming: { kind: "game" } }), ticks);
   assert.deepEqual(actions.map((a) => a.type), ["apply"]);
+});
+
+const OVERWATCH = { id: 2357570, name: "Overwatch" };
+
+test("a running game triggers the Gaming board whatever has focus", () => {
+  const rule = { kind: "game" };
+  assert.equal(triggerReason(rule, { app: "Firefox", game: OVERWATCH }, 0), "Overwatch running");
+  assert.equal(triggerReason(rule, { app: null, game: OVERWATCH }, 0), "Overwatch running");
+  // The window class alone still counts, for a build that sends no game.
+  assert.equal(triggerReason(rule, { app: GAME, game: null }, 0), `${GAME} in focus`);
+  assert.equal(triggerReason(rule, { app: "Firefox", game: null }, 0), null);
+  assert.equal(triggerReason(rule, { app: "Firefox" }, 0), null);
+});
+
+test("a game kept running in the background holds the board", () => {
+  const ticks = [
+    ...span(0, 30_000, { app: GAME, game: OVERWATCH }),
+    ...span(35_000, 300_000, { app: "Discord", game: OVERWATCH }),
+  ];
+  const { actions } = run(cfg({ Gaming: { kind: "game" } }), ticks);
+  assert.deepEqual(actions.map((a) => a.type), ["apply"]);
+});
+
+test("quitting the game restores the board after the exit delay", () => {
+  const ticks = [
+    ...span(0, 30_000, { app: "Firefox", game: OVERWATCH }),
+    ...span(35_000, 200_000, { app: "Firefox", game: null }),
+  ];
+  const { actions } = run(cfg({ Gaming: { kind: "game" } }), ticks);
+  assert.deepEqual(actions.map((a) => a.type), ["apply", "restore"]);
+  assert.equal(actions[1].at, 30_000 + EXIT_MS);
 });
 
 test("the board is restored once the trigger has been gone for the exit delay", () => {

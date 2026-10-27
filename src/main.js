@@ -4729,6 +4729,8 @@ let focusedApp = null;
 let focusedLabel = null;
 // The last app other than ARIA to have focus, for the trigger editor.
 let lastFocusedApp = null;
+// The Steam game running, from the tracker; independent of focus.
+let runningGame = null;
 let hudInputAt = 0;
 // When the focused app took focus, and the sitting the tracker's presence
 // ticks add up to (see `noteSession`). Both feed the header strip, which is
@@ -4787,8 +4789,9 @@ function initAutomation() {
  * *holding* focus doesn't count: closing the last other window leaves focus on
  * ARIA indefinitely, and a rule pinned to a stale name would never let go.
  */
-function onActivity({ app, label, idle, presence }) {
+function onActivity({ app, label, idle, presence, game }) {
   const now = Date.now();
+  runningGame = game ?? null;
   // A break is a break whoever was in front, so the sitting is tracked before
   // the HUD gate below — otherwise working in the HUD would look like a break
   // that never ends. `presence` is the tracker's own reading; `idle` is all an
@@ -4815,6 +4818,7 @@ function autoTick() {
   const now = Date.now();
   const signals = {
     app: focusedApp,
+    game: runningGame,
     gpu: gpuData && now - gpuAt < STALE_MS ? gpuData.gpu : null,
     agenda: automationAgenda(weekClasses(now), calData, now),
   };
