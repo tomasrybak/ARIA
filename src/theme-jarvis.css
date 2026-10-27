@@ -183,11 +183,6 @@ body.interactive .widget {
   overflow: hidden;
 }
 
-.widget-body--center {
-  align-items: center;
-  justify-content: center;
-}
-
 .disconnected {
   font-size: 0.8rem;
   color: var(--color-text-dim);
@@ -240,23 +235,6 @@ body.interactive .widget {
 .gauge-name {
   font-size: 0.65rem;
   letter-spacing: 0.2em;
-  color: var(--color-text-dim);
-}
-
-/* ── email ── */
-
-.big-count {
-  font-family: var(--font-display);
-  font-size: 2.4rem;
-  font-weight: 900;
-  color: var(--color-accent);
-  text-shadow: var(--glow-text);
-  line-height: 1;
-}
-
-.big-count-label {
-  font-size: 0.75rem;
-  letter-spacing: 0.15em;
   color: var(--color-text-dim);
 }
 
@@ -657,37 +635,6 @@ body.interactive .widget {
 .course-tag--req {
   color: var(--color-accent);
   border-color: var(--color-border-hover);
-}
-
-.class-row {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
-.class-time {
-  font-family: var(--font-display);
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--color-accent);
-  white-space: nowrap;
-}
-
-.class-subject {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.class-room {
-  font-size: 0.8rem;
-  color: var(--color-text-dim);
-  margin-left: auto;
-  white-space: nowrap;
 }
 
 .connect-btn {
