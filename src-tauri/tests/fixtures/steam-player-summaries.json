@@ -1,0 +1,77 @@
+{
+  "response": {
+    "players": [
+      {
+        "steamid": "76561197960287930",
+        "communityvisibilitystate": 3,
+        "profilestate": 1,
+        "personaname": "me",
+        "commentpermission": 1,
+        "profileurl": "https://steamcommunity.com/profiles/76561197960287930/",
+        "avatar": "https://avatars.steamstatic.com/aa.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/aa_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/aa_full.jpg",
+        "avatarhash": "aa",
+        "personastate": 1,
+        "personastateflags": 0
+      },
+      {
+        "steamid": "76561198000000002",
+        "communityvisibilitystate": 3,
+        "profilestate": 1,
+        "personaname": "Zed",
+        "commentpermission": 1,
+        "profileurl": "https://steamcommunity.com/profiles/76561198000000002/",
+        "avatar": "https://avatars.steamstatic.com/bb.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/bb_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/bb_full.jpg",
+        "avatarhash": "bb",
+        "personastate": 1,
+        "personastateflags": 0,
+        "gameextrainfo": "Counter-Strike 2",
+        "gameid": "730"
+      },
+      {
+        "steamid": "76561198000000003",
+        "communityvisibilitystate": 3,
+        "profilestate": 1,
+        "personaname": "anna",
+        "commentpermission": 1,
+        "profileurl": "https://steamcommunity.com/profiles/76561198000000003/",
+        "avatar": "https://avatars.steamstatic.com/cc.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/cc_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/cc_full.jpg",
+        "avatarhash": "cc",
+        "personastate": 3,
+        "personastateflags": 0
+      },
+      {
+        "steamid": "76561198000000004",
+        "communityvisibilitystate": 3,
+        "profilestate": 1,
+        "personaname": "Bob",
+        "profileurl": "https://steamcommunity.com/profiles/76561198000000004/",
+        "avatar": "https://avatars.steamstatic.com/dd.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/dd_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/dd_full.jpg",
+        "avatarhash": "dd",
+        "personastate": 0,
+        "personastateflags": 0
+      },
+      {
+        "steamid": "76561198000000005",
+        "communityvisibilitystate": 1,
+        "profilestate": 1,
+        "personaname": "Carl",
+        "commentpermission": 2,
+        "profileurl": "https://steamcommunity.com/profiles/76561198000000005/",
+        "avatar": "https://avatars.steamstatic.com/ee.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/ee_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/ee_full.jpg",
+        "avatarhash": "ee",
+        "personastate": 6,
+        "personastateflags": 0
+      }
+    ]
+  }
+}

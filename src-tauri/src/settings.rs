@@ -56,6 +56,7 @@ const CONFIGS: &[(&str, &str)] = &[
     ("calendar", "calendar.json"),
     ("discord", "discord.json"),
     ("weather", "weather.json"),
+    ("steam", "steam.json"),
     ("wallpaper", "wallpaper.json"),
 ];
 

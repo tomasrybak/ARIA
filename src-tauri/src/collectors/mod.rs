@@ -11,6 +11,7 @@ pub mod latency;
 pub mod music;
 mod screentime;
 pub mod stag;
+pub mod steam;
 pub mod steam_local;
 pub mod weather;
 
@@ -221,5 +222,6 @@ pub fn spawn_all(app: &AppHandle) {
     calendar::spawn(app.clone(), rx.clone());
     weather::spawn(app.clone(), rx.clone());
     freegames::spawn(app.clone(), rx.clone());
+    steam::spawn(app.clone(), rx.clone());
     stag::spawn(app.clone(), rx);
 }

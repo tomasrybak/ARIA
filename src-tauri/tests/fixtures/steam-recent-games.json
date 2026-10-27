@@ -1,0 +1,29 @@
+{
+  "response": {
+    "total_count": 2,
+    "games": [
+      {
+        "appid": 2357570,
+        "name": "Overwatch",
+        "playtime_2weeks": 754,
+        "playtime_forever": 12034,
+        "img_icon_url": "abc123",
+        "playtime_windows_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_linux_forever": 12034,
+        "playtime_deck_forever": 0
+      },
+      {
+        "appid": 1145360,
+        "name": "Hades",
+        "playtime_2weeks": 61,
+        "playtime_forever": 2210,
+        "img_icon_url": "",
+        "playtime_windows_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_linux_forever": 2210,
+        "playtime_deck_forever": 0
+      }
+    ]
+  }
+}
