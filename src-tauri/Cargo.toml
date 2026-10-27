@@ -61,6 +61,7 @@ windows = { version = "0.62", features = [
     "Win32_System_SystemInformation",  # GetTickCount
     "Win32_System_Threading",          # foreground process name
     "Win32_System_Performance",        # PDH GPU counters
+    "Win32_System_Registry",           # Steam install path
     "Media_Control",                   # SMTC now-playing (WinRT)
     "Storage_Streams",                 # SMTC thumbnail stream (album art)
 ] }

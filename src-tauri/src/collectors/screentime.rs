@@ -1,3 +1,4 @@
+use super::steam_local;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -32,6 +33,12 @@ struct ScreenTime {
     source: &'static str,
 }
 
+/// The focused app, and its process where the platform can say.
+struct Focus {
+    name: String,
+    pid: Option<u32>,
+}
+
 /// What has focus right now — the auto-switch rules' live signal.
 #[derive(Serialize, Clone)]
 struct Activity {
@@ -46,6 +53,8 @@ struct Activity {
     /// distinction between "away" and "this session cannot tell", which `idle`
     /// alone collapses into the same `false`.
     presence: &'static str,
+    /// The Steam game running now, focused or not.
+    game: Option<steam_local::Game>,
 }
 
 #[derive(Serialize, Clone)]
@@ -112,7 +121,15 @@ pub fn spawn(app: AppHandle) {
             // A session that cannot answer the question is counted rather than
             // dropped, exactly as before this distinction existed.
             let idle = presence == Presence::Away;
-            let focused = frontmost_app(&app);
+            let running = steam_local::running_game();
+            let focused = frontmost_app(&app).map(|f| match &running {
+                // Keyed like the `steam_app_<id>` class Linux already reports,
+                // so a game is one row in the day files on every OS.
+                Some(r) if f.pid.is_some_and(|pid| r.pids.contains(&pid)) => {
+                    format!("steam_app_{}", r.game.id)
+                }
+                _ => f.name,
+            });
             if !idle {
                 usage.total += TICK.as_secs();
                 if let Some(name) = &focused {
@@ -127,6 +144,7 @@ pub fn spawn(app: AppHandle) {
                 app: focused,
                 idle,
                 presence: presence.as_str(),
+                game: running.map(|r| r.game),
             };
             if let Err(e) = app.emit("activity", activity) {
                 eprintln!("activity emit failed: {e}");
@@ -436,7 +454,7 @@ fn save_day(app: &AppHandle, day: &str, usage: &DayUsage) {
 /// Name of the frontmost application. NSWorkspace is queried on the main
 /// thread; the tracker loop itself runs on the async runtime.
 #[cfg(target_os = "macos")]
-fn frontmost_app(app: &AppHandle) -> Option<String> {
+fn frontmost_app(app: &AppHandle) -> Option<Focus> {
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
     use std::ffi::CStr;
@@ -450,6 +468,7 @@ fn frontmost_app(app: &AppHandle) -> Option<String> {
                 None
             } else {
                 let name: *mut AnyObject = msg_send![front, localizedName];
+                let pid: i32 = msg_send![front, processIdentifier];
                 if name.is_null() {
                     None
                 } else {
@@ -457,7 +476,10 @@ fn frontmost_app(app: &AppHandle) -> Option<String> {
                     if utf8.is_null() {
                         None
                     } else {
-                        Some(CStr::from_ptr(utf8).to_string_lossy().into_owned())
+                        Some(Focus {
+                            name: CStr::from_ptr(utf8).to_string_lossy().into_owned(),
+                            pid: u32::try_from(pid).ok(),
+                        })
                     }
                 }
             }
@@ -485,7 +507,7 @@ fn idle_seconds() -> f64 {
 
 /// Executable stem of the foreground window's process (e.g. "chrome").
 #[cfg(target_os = "windows")]
-fn frontmost_app(_app: &AppHandle) -> Option<String> {
+fn frontmost_app(_app: &AppHandle) -> Option<Focus> {
     use windows::core::PWSTR;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
@@ -516,9 +538,10 @@ fn frontmost_app(_app: &AppHandle) -> Option<String> {
         let _ = CloseHandle(proc);
         ok.ok()?;
         let path = String::from_utf16_lossy(&buf[..len as usize]);
-        std::path::Path::new(&path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
+        std::path::Path::new(&path).file_stem().map(|s| Focus {
+            name: s.to_string_lossy().into_owned(),
+            pid: Some(pid),
+        })
     }
 }
 
@@ -600,9 +623,9 @@ fn xwayland_fallback() -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn frontmost_app(_app: &AppHandle) -> Option<String> {
+fn frontmost_app(_app: &AppHandle) -> Option<Focus> {
     match backend() {
-        Backend::X11 => x11::active_app(),
+        Backend::X11 => x11::active_app().map(|name| Focus { name, pid: None }),
         Backend::Wayland => {
             wl::ensure_started();
             // GNOME/Mutter implements no toplevel protocol, so the Wayland
@@ -611,7 +634,9 @@ fn frontmost_app(_app: &AppHandle) -> Option<String> {
             // reason the game trigger exists. Native Wayland windows stay
             // invisible to this, so it is a fallback and never an override:
             // a compositor that does name windows is always believed first.
-            wl::active_app().or_else(|| xwayland_fallback().then(x11::focused_app).flatten())
+            wl::active_app()
+                .or_else(|| xwayland_fallback().then(x11::focused_app).flatten())
+                .map(|name| Focus { name, pid: None })
         }
         Backend::Unsupported => None,
     }
@@ -695,7 +720,7 @@ fn friendly(app_id: &str) -> String {
 /// Only ever used for display: the session line in the header strip, and the
 /// app lists in SCREEN TIME and TRENDS.
 fn display_name(app: &str) -> String {
-    super::steam_local::steam_app_name(app).unwrap_or_else(|| app.to_string())
+    steam_local::steam_app_name(app).unwrap_or_else(|| app.to_string())
 }
 
 /// App times relabelled for display and merged, ranked longest first. A day

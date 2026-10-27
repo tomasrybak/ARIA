@@ -72,6 +72,7 @@ pub fn run() {
             collectors::stag::stag_login,
             collectors::stag::stag_logout,
             collectors::stag::stag_refresh,
+            collectors::steam_local::steam_games,
             collectors::email::email_refresh,
             collectors::github::github_refresh,
             collectors::crypto::crypto_refresh,

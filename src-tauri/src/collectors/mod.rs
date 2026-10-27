@@ -11,7 +11,7 @@ pub mod latency;
 pub mod music;
 mod screentime;
 pub mod stag;
-mod steam_local;
+pub mod steam_local;
 pub mod weather;
 
 use tauri::{AppHandle, Manager};
