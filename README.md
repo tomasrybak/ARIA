@@ -1,6 +1,6 @@
 # ARIA
 
-[![Latest release](https://img.shields.io/github/v/release/tomasrybak/ARIA?label=release&color=7fb7ff)](https://github.com/tomasrybak/ARIA/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/tomasrybak/ARIA?sort=semver&label=release&color=7fb7ff)](https://github.com/tomasrybak/ARIA/releases/latest)
 [![Release build](https://github.com/tomasrybak/ARIA/actions/workflows/release.yml/badge.svg)](https://github.com/tomasrybak/ARIA/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
