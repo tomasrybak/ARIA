@@ -1,0 +1,46 @@
+# Tests on every push to main and every pull request, on all three OSes.
+#
+# Most per-OS code (`#[cfg(target_os)]`) can't be compiled from a single dev
+# machine, so this is where the macOS and Windows branches are first built and
+# tested, well before a release tag depends on them.
+
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Same list as release.yml.
+  LINUX_DEPS: >-
+    libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+    libxdo-dev libssl-dev libdbus-1-dev pkg-config patchelf
+
+jobs:
+  frontend:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - if: matrix.platform == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
