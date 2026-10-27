@@ -40,7 +40,7 @@ struct ImapAccount {
 }
 
 #[derive(Deserialize, Serialize, Default)]
-struct MailConfig {
+pub(crate) struct MailConfig {
     accounts: Vec<ImapAccount>,
 }
 

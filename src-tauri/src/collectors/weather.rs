@@ -33,7 +33,7 @@ pub enum Units {
 }
 
 #[derive(Deserialize, Serialize)]
-struct WeatherConfig {
+pub(crate) struct WeatherConfig {
     place: Place,
     #[serde(default)]
     units: Units,

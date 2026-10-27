@@ -28,6 +28,8 @@ use tauri::{AppHandle, Manager};
 
 /// Extensions the frontend should mount in a `<video>` rather than an `<img>`.
 const VIDEO_EXTS: &[&str] = &["mp4", "webm", "mkv", "mov", "m4v", "ogv", "ogg", "avi"];
+/// The image types the file picker offers.
+const IMAGE_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp", "avif"];
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -113,15 +115,37 @@ impl WallpaperConfig {
         }
         self
     }
+
+    /// A config arriving from a settings import. Its path would be granted to
+    /// the asset protocol, so it is kept only if it names an existing image or
+    /// video on this machine; otherwise the backdrop falls back to the default.
+    pub fn importable(self) -> Self {
+        let cfg = self.sanitize();
+        let usable = cfg.path.as_deref().map(Path::new).is_some_and(|p| {
+            let ext = extension(p);
+            p.is_file() && (VIDEO_EXTS.contains(&ext.as_str()) || IMAGE_EXTS.contains(&ext.as_str()))
+        });
+        if cfg.source != Source::File || usable {
+            return cfg;
+        }
+        WallpaperConfig {
+            source: WallpaperConfig::default().source,
+            path: None,
+            ..cfg
+        }
+    }
+}
+
+fn extension(path: &Path) -> String {
+    path.extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
 }
 
 /// Video or image, from the file extension. MPRIS-style content sniffing isn't
 /// worth it here: the user picked the file through a filtered dialog.
 fn kind_of(path: &Path) -> Kind {
-    let ext = path
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let ext = extension(path);
     if VIDEO_EXTS.contains(&ext.as_str()) {
         Kind::Video
     } else {
@@ -486,6 +510,29 @@ mod tests {
         let back: WallpaperConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.fit, Fit::Contain);
         assert_eq!(back.path.as_deref(), Some("/home/u/loop.mp4"));
+    }
+
+    #[test]
+    fn an_imported_path_must_be_existing_media() {
+        let dir = std::env::temp_dir().join(format!("aria-wp-import-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let image = dir.join("bg.PNG");
+        let secret = dir.join("id_ed25519");
+        std::fs::write(&image, b"png").unwrap();
+        std::fs::write(&secret, b"key").unwrap();
+        let file = |p: &Path| WallpaperConfig {
+            source: Source::File,
+            path: Some(p.to_string_lossy().into_owned()),
+            ..WallpaperConfig::default()
+        };
+
+        assert_eq!(file(&image).importable().source, Source::File);
+        for rejected in [secret.clone(), dir.join("missing.png")] {
+            let cfg = file(&rejected).importable();
+            assert_eq!(cfg.source, WallpaperConfig::default().source);
+            assert_eq!(cfg.path, None);
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

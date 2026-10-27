@@ -46,6 +46,11 @@ chrono = "0.4"
 # Linux only: encode the desktop wallpaper as a data: URI for the opaque-window
 # transparency workaround (see window::desktop_background).
 base64 = "0.22"
+# Passphrase-encrypted settings export (see src/settings.rs).
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+getrandom = "0.2"
+zeroize = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
@@ -84,7 +89,13 @@ dbus = "0.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-# Machine-bound encryption for the macOS dev-mode secrets file.
-chacha20poly1305 = "0.10"
+# Machine-bound key for the macOS dev-mode secrets file (the cipher itself is
+# a general dependency).
 sha2 = "0.10"
-getrandom = "0.2"
+
+# Unoptimised Argon2 turns a 0.25 s export into many seconds under `tauri dev`.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

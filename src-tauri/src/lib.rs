@@ -1,5 +1,6 @@
 mod collectors;
 mod terminal;
+mod settings;
 mod wallpaper;
 mod window;
 
@@ -52,6 +53,9 @@ pub fn run() {
             window::display_server,
             window::place_on_monitor,
             collectors::history::history_report,
+            settings::settings_export,
+            settings::settings_open,
+            settings::settings_apply,
             wallpaper::wallpaper_config,
             wallpaper::wallpaper_set,
             wallpaper::wallpaper_preview,

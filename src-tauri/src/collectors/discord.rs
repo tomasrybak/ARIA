@@ -41,7 +41,7 @@ pub struct Friend {
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
-struct DiscordConfig {
+pub(crate) struct DiscordConfig {
     /// Legacy single-server field; merged into guild_ids on load.
     guild_id: String,
     guild_ids: Vec<String>,

@@ -62,7 +62,7 @@ struct Feed {
 }
 
 #[derive(Deserialize, Serialize, Default)]
-struct CalendarConfig {
+pub(crate) struct CalendarConfig {
     feeds: Vec<Feed>,
 }
 
