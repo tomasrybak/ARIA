@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   MAX_NOTES,
   addNote,
-  clearDone,
   dueLabel,
   noteStatus,
   notesSummary,
@@ -84,12 +83,6 @@ test("at the cap a done note gives way, never an open one", () => {
   assert.equal(notes.length, MAX_NOTES);
   assert.ok(!notes.some((n) => n.id === doneId));
   assert.ok(notes.some((n) => n.text === "one more"));
-});
-
-test("clearing done notes keeps the open ones", () => {
-  let notes = addNote(addNote([], "a", NOW), "b", NOW);
-  notes = toggleNote(notes, notes[0].id, NOW);
-  assert.deepEqual(clearDone(notes).map((n) => n.text), ["b"]);
 });
 
 test("order puts due-soon first, then pinned, then the rest, done last", () => {

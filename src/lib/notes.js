@@ -92,10 +92,6 @@ export function removeNote(notes, id) {
   return notes.filter((n) => n.id !== id);
 }
 
-export function clearDone(notes) {
-  return notes.filter((n) => !n.done);
-}
-
 /**
  * Display order: what still needs doing first — overdue and soon-due ahead of
  * the rest, pinned above plain, newest first within a group — and everything
