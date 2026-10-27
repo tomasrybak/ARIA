@@ -174,6 +174,68 @@
   display: none;
 }
 
+/* Settings export / import: same panel chrome as the wallpaper settings. */
+.settings-panel {
+  width: 280px;
+  gap: 8px;
+}
+
+.set-head {
+  font: 600 0.72rem/1 "Inter", system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(201, 204, 211, 0.8);
+}
+
+.set-head:not(:first-child) {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-panel input[type="password"] {
+  padding: 6px 8px;
+  font: 400 0.78rem/1.2 "Inter", system-ui, sans-serif;
+  color: #e6e8ec;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+
+.settings-panel button.set-action {
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-panel button.set-action::before,
+.settings-panel button.set-action::after {
+  content: none;
+}
+
+.settings-panel button.set-danger.armed {
+  background: rgba(232, 115, 106, 0.3);
+  color: #fff;
+}
+
+.set-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.set-step[hidden] {
+  display: none;
+}
+
+.set-note {
+  font: 400 0.7rem/1.35 "Inter", system-ui, sans-serif;
+  color: rgba(201, 204, 211, 0.6);
+}
+
+.set-note[hidden] {
+  display: none;
+}
+
 /* ── "what matters now" strip ───────────────────────────────
    Structural only, like the rest of base.css — the colours come from the
    theme's own variables, with the same fallback chain the telemetry widgets

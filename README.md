@@ -109,6 +109,15 @@ Each service widget has its own login: disconnected widgets show a login form in
 
 Nothing leaves your machine except the API calls to the services themselves.
 
+### Moving your settings
+
+Display menu → **Export / import…** saves everything you set up (boards, theme, auto-switch rules, notes, timetables, clock zones, window placement, and the mail / calendar / Discord / weather / wallpaper settings) to one `.aria` file, and loads it on another machine or into another build.
+
+- **Passwords and tokens are never in the file.** They stay in the keychain of the machine they were typed on; after an import, each account asks for its password once.
+- The file is **encrypted with a passphrase** you choose (at least 10 characters): Argon2id (128 MiB, 4 passes) derives the key, ChaCha20-Poly1305 encrypts and authenticates. Without the passphrase it is unreadable, and a modified file is refused rather than half-imported. The passphrase cannot be recovered.
+- Import **replaces** your settings and asks twice before it does. If the imported window placement is for a monitor connected here, it asks whether to take it or keep this machine's.
+- Imported values are checked like any other input: unknown settings are dropped, and a wallpaper path is kept only if it names an image or video that exists on this machine.
+
 ## Install
 
 Download the installer for your system from [Releases](https://github.com/tomasrybak/ARIA/releases):
@@ -261,6 +270,7 @@ No key. Type a city into the widget, pick the right match, choose °C or °F. Ch
 | `discord-popularity.json` | app data dir¹ | per-channel person-minute tallies |
 | `screentime/` | app data dir¹ | daily usage JSONs |
 | `history/` | app data dir¹ | one day of samples per file, 30-day retention, for TRENDS |
+| `calendar.json`, `wallpaper.json` | app config dir¹ | calendar feed names (the URLs are secrets) and wallpaper settings |
 | layout / theme | `localStorage` | board arrangement, saved board presets, chosen theme, terminal font size |
 
 ¹ macOS: `~/Library/Application Support/com.aria.desktop/` — Windows/Linux use the platform-standard config/data dirs.

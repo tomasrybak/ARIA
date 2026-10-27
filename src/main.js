@@ -111,6 +111,14 @@ import {
   normalizeLayout as normalizeLayoutIn,
   rectOf as rectOfIn,
 } from "./lib/layout.js";
+import {
+  PLACEMENT_KEY,
+  collectStorage,
+  describeBundle,
+  passphraseProblem,
+  placementChoice,
+  planImport,
+} from "./lib/settings.js";
 
 // Platform gates. macOS is the only place the ⌥ interactivity gate exists;
 // Linux needs the opaque-background workaround (see base.css and CLAUDE.md)
@@ -5586,6 +5594,189 @@ function initWallpaperMenu() {
   });
 }
 
+/* ── settings export / import ──────────────────────────────
+   Rust encrypts, decrypts and owns the config files (settings.rs); this owns
+   the localStorage half and the conversation. Import is two-phase: unlock
+   shows what the file holds, and nothing is written until the user confirms. */
+function initSettingsMenu() {
+  const { core } = window.__TAURI__;
+  const panel = document.getElementById("settings-panel");
+  const $ = (id) => document.getElementById(id);
+  const err = $("set-error");
+  const applyBtn = $("set-apply");
+  const FILTERS = [{ name: "ARIA settings", extensions: ["aria"] }];
+  let importPath = null;
+  let opened = null;
+  let placement = "keep";
+  let armed = null;
+
+  const showError = (e) => {
+    err.textContent = e ? String(e?.message || e) : "";
+    err.hidden = !e;
+  };
+  const pickedPath = (picked) => (typeof picked === "string" ? picked : picked?.path) || null;
+  const disarm = () => {
+    clearTimeout(armed);
+    armed = null;
+    applyBtn.classList.remove("armed");
+    applyBtn.textContent = "Replace my settings";
+  };
+  // Passphrases and the decrypted bundle live only as long as the panel is open.
+  const reset = () => {
+    for (const id of ["set-pass", "set-pass2", "set-open-pass"]) $(id).value = "";
+    importPath = null;
+    opened = null;
+    $("set-unlock").hidden = true;
+    $("set-confirm").hidden = true;
+    disarm();
+    showError(null);
+  };
+
+  $("set-export").addEventListener("click", async () => {
+    showError(null);
+    const pass = $("set-pass").value;
+    const problem = passphraseProblem(pass, $("set-pass2").value);
+    if (problem) return showError(problem);
+    try {
+      const path = pickedPath(
+        await core.invoke("plugin:dialog|save", {
+          options: {
+            title: "Export ARIA settings",
+            defaultPath: `aria-settings-${new Date().toISOString().slice(0, 10)}.aria`,
+            filters: FILTERS,
+          },
+        }),
+      );
+      if (!path) return;
+      const btn = $("set-export");
+      btn.disabled = true;
+      btn.textContent = "Encrypting…";
+      try {
+        await core.invoke("settings_export", {
+          path,
+          passphrase: pass,
+          storage: collectStorage((k) => localStorage.getItem(k)),
+        });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Export…";
+      }
+      $("set-pass").value = "";
+      $("set-pass2").value = "";
+      showToast("Settings exported", false);
+    } catch (e) {
+      showError(e);
+    }
+  });
+
+  $("set-import").addEventListener("click", async () => {
+    showError(null);
+    try {
+      const path = pickedPath(
+        await core.invoke("plugin:dialog|open", {
+          options: { title: "Import ARIA settings", multiple: false, directory: false, filters: FILTERS },
+        }),
+      );
+      if (!path) return;
+      reset();
+      importPath = path;
+      $("set-file").textContent = path;
+      $("set-unlock").hidden = false;
+      $("set-open-pass").focus();
+    } catch (e) {
+      showError(e);
+    }
+  });
+
+  const unlock = async () => {
+    showError(null);
+    const btn = $("set-open");
+    btn.disabled = true;
+    btn.textContent = "Decrypting…";
+    try {
+      const { bundle, skipped } = await core.invoke("settings_open", {
+        path: importPath,
+        passphrase: $("set-open-pass").value,
+      });
+      $("set-open-pass").value = "";
+      opened = bundle;
+      const monitors = (await window.__TAURI__.window.availableMonitors()).map((m) => ({
+        x: m.position.x, y: m.position.y, w: m.size.width, h: m.size.height,
+      }));
+      const choice = placementChoice(
+        bundle.storage[PLACEMENT_KEY],
+        localStorage.getItem(PLACEMENT_KEY),
+        monitors,
+      );
+      placement = "keep";
+      for (const b of $("set-place").children) {
+        b.classList.toggle("active", b.dataset.place === placement);
+      }
+      $("set-place-row").hidden = choice !== "ask";
+      const note = $("set-place-note");
+      note.hidden = choice !== "elsewhere";
+      note.textContent = "The imported window placement is for a monitor not connected here; keeping this one.";
+      const ignored = planImport(bundle.storage).ignored;
+      const dropped = [...skipped, ...ignored];
+      $("set-summary").textContent =
+        describeBundle(bundle) + (dropped.length ? ` · not imported: ${dropped.join(", ")}` : "");
+      $("set-unlock").hidden = true;
+      $("set-confirm").hidden = false;
+    } catch (e) {
+      showError(e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Unlock";
+    }
+  };
+  $("set-open").addEventListener("click", unlock);
+  $("set-open-pass").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") unlock();
+  });
+
+  $("set-place").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    placement = b.dataset.place;
+    for (const x of $("set-place").children) x.classList.toggle("active", x === b);
+  });
+
+  applyBtn.addEventListener("click", async () => {
+    if (!opened) return;
+    if (!armed) {
+      applyBtn.classList.add("armed");
+      applyBtn.textContent = "Sure? This replaces everything";
+      armed = setTimeout(disarm, 4000);
+      return;
+    }
+    disarm();
+    try {
+      await core.invoke("settings_apply", { config: opened.config });
+      const plan = planImport(opened.storage, { placement: placement === "import" });
+      for (const key of plan.remove) localStorage.removeItem(key);
+      for (const [key, value] of Object.entries(plan.set)) localStorage.setItem(key, value);
+      // Every module reads its settings at startup, so a reload applies them all.
+      location.reload();
+    } catch (e) {
+      showError(e);
+    }
+  });
+
+  $("settings-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.getElementById("display-menu").hidden = true;
+    document.getElementById("wallpaper-panel").hidden = true;
+    reset();
+    panel.hidden = !panel.hidden;
+  });
+  panel.addEventListener("click", (e) => e.stopPropagation());
+  panel.addEventListener("pointerdown", (e) => e.stopPropagation());
+  document.addEventListener("click", () => {
+    if (!panel.hidden) reset();
+    panel.hidden = true;
+  });
+}
+
 
 window.addEventListener("DOMContentLoaded", async () => {
   restoreWindowState(); // async, fire-and-forget: reposition ASAP
@@ -5616,6 +5807,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initThemePicker();
   initDisplayMenu();
   initWallpaperMenu();
+  initSettingsMenu();
   initWindowHandles();
   initWindowStateSaver();
   // Before initLayout(): its applyLayout() calls syncTerminal(), which starts

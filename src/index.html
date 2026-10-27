@@ -111,6 +111,7 @@
               <button id="fill-toggle">Fill screen</button>
               <button id="autostart-toggle">Start at login</button>
               <button id="wallpaper-btn">Wallpaper…</button>
+              <button id="settings-btn">Export / import…</button>
             </div>
             <div class="theme-menu wallpaper-panel" id="wallpaper-panel" hidden>
               <div class="wp-row">
@@ -143,6 +144,33 @@
                 <span class="wp-label">Mute video</span>
               </label>
               <div class="wp-error" id="wp-error" hidden></div>
+            </div>
+            <div class="theme-menu wallpaper-panel settings-panel" id="settings-panel" hidden>
+              <div class="set-head">Export settings</div>
+              <input type="password" id="set-pass" placeholder="passphrase (10+ characters)" autocomplete="new-password" />
+              <input type="password" id="set-pass2" placeholder="repeat passphrase" autocomplete="new-password" />
+              <button class="set-action" id="set-export">Export…</button>
+              <div class="set-note">Encrypted with the passphrase, which cannot be recovered. Passwords and tokens are never included.</div>
+              <div class="set-head">Import settings</div>
+              <button class="set-action" id="set-import">Open file…</button>
+              <div class="set-step" id="set-unlock" hidden>
+                <div class="wp-path" id="set-file"></div>
+                <input type="password" id="set-open-pass" placeholder="passphrase" autocomplete="off" />
+                <button class="set-action" id="set-open">Unlock</button>
+              </div>
+              <div class="set-step" id="set-confirm" hidden>
+                <div class="set-note" id="set-summary"></div>
+                <div class="wp-row" id="set-place-row" hidden>
+                  <span class="wp-label">Window</span>
+                  <div class="wp-seg" id="set-place">
+                    <button data-place="keep" class="active">This machine</button>
+                    <button data-place="import">Imported</button>
+                  </div>
+                </div>
+                <div class="set-note" id="set-place-note" hidden></div>
+                <button class="set-action set-danger" id="set-apply">Replace my settings</button>
+              </div>
+              <div class="wp-error" id="set-error" hidden></div>
             </div>
           </div>
           <div class="theme-picker preset-picker">
