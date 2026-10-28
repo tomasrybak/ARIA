@@ -1,5 +1,6 @@
 mod apps;
 mod collectors;
+mod files;
 mod terminal;
 mod palette;
 mod settings;
@@ -57,6 +58,7 @@ pub fn run() {
             // wallpaper has to be re-granted on every launch.
             wallpaper::init(app.handle());
             terminal::init(app.handle());
+            files::init(app.handle());
             collectors::spawn_all(app.handle());
             palette::init(app.handle());
             Ok(())
@@ -70,6 +72,13 @@ pub fn run() {
             system::volume,
             apps::apps_list,
             apps::apps_launch,
+            files::files_search,
+            files::files_latest,
+            files::files_open,
+            files::files_reveal,
+            files::files_config,
+            files::files_set_config,
+            files::files_status,
             collectors::history::history_report,
             settings::settings_export,
             settings::settings_open,
