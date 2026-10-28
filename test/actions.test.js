@@ -16,8 +16,8 @@ test("run passes ctx and args, and normalizes the answer", async () => {
     { id: "elsewhere", widget: "clock", run: () => ({ text: "ok", widget: "weather" }) },
   ]);
   assert.deepEqual(await runAction(reg, { action: "say", args: { who: "you" } }, { greeting: "hi" }),
-    { text: "hi you", widget: "clock", error: false });
-  assert.deepEqual(await runAction(reg, { action: "quiet" }, {}), { text: "", widget: null, error: false });
+    { text: "hi you", widget: "clock", feedback: true, error: false });
+  assert.deepEqual(await runAction(reg, { action: "quiet" }, {}), { text: "", widget: null, feedback: true, error: false });
   assert.equal((await runAction(reg, { action: "elsewhere" }, {})).widget, "weather");
 });
 
@@ -41,4 +41,9 @@ test("describe uses the label when an action has one", () => {
   ]);
   assert.equal(describe(reg, { action: "game", args: { game: { name: "Overwatch 2" } } }), "Launch Overwatch 2");
   assert.equal(describe(reg, { action: "next" }), "next song");
+});
+
+test("feedback: false marks actions with nothing to confirm", async () => {
+  const reg = defineActions([{ id: "cancel", feedback: false, run: () => {} }]);
+  assert.equal((await runAction(reg, { action: "cancel" }, {})).feedback, false);
 });

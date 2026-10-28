@@ -7,6 +7,8 @@
 //   ctx.musicControl(op)  "playpause" | "next" | "previous"
 //   ctx.showBoard(name)   apply a board preset, as a click in the menu would
 //   ctx.startTimer(secs)  ctx.stopTimer() → false when no timer was running
+//   ctx.addNote(text)     add to the Notes widget → the note as stored
+//   ctx.lastAnswer()      the last answer worth repeating, or null
 //   ctx.facts()           snapshot of collector data for questions: { now, hw,
 //                         gpu, music, classes, email, freegames, weather,
 //                         crypto, github, steam, screentime }
@@ -132,7 +134,31 @@ export function buildActions() {
         ctx.openUrl(a.link.url);
       },
     },
+    {
+      id: "note.add",
+      phrases: ["note {body:text}", "note that {body:text}", "take a note {body:text}", "add a note {body:text}",
+        "remember to {body:text}"],
+      widget: "notes",
+      label: (a) => `Note: ${a.body}`,
+      run: (ctx, a) => {
+        const note = ctx.addNote(a.body);
+        if (!note) return "Nothing to note";
+        return note.text.length < a.body.length ? `Noted, shortened to ${note.text.length} characters` : "Noted";
+      },
+    },
     ...questions(),
+    {
+      id: "meta.repeat",
+      phrases: ["repeat that", "repeat", "say that again", "what did you say"],
+      run: (ctx) => ctx.lastAnswer() ?? "Nothing to repeat yet",
+    },
+    {
+      // Closes the bar now; with speech it will also cut an answer short.
+      id: "meta.cancel",
+      phrases: ["cancel", "stop", "never mind", "nevermind", "forget it"],
+      feedback: false,
+      run: () => {},
+    },
     {
       id: "meta.help",
       phrases: ["what can i say", "what can you do", "help", "commands"],

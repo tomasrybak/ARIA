@@ -16,7 +16,7 @@ const lists = {
 };
 
 /** A ctx that records what the actions asked for. */
-function fakeCtx({ music = null, timer = false } = {}) {
+function fakeCtx({ music = null, timer = false, last = null } = {}) {
   const calls = [];
   return {
     calls,
@@ -27,6 +27,8 @@ function fakeCtx({ music = null, timer = false } = {}) {
     showBoard: (name) => calls.push(["board", name]),
     startTimer: (secs) => calls.push(["timer", secs]),
     stopTimer: () => (calls.push(["stop"]), timer),
+    addNote: (text) => (calls.push(["note", text]), text.trim() ? { text: text.trim().slice(0, 140) } : null),
+    lastAnswer: () => last,
   };
 }
 
@@ -113,4 +115,24 @@ test("suggest: one runnable row, choices, or nothing", () => {
   assert.ok(pick.items.every((i) => i.label.startsWith("Launch ")));
 
   assert.deepEqual(suggest(registry, "make me a sandwich", lists), { run: false, items: [] });
+});
+
+test("dictated notes keep the user's words, typed reminders pass through", async () => {
+  const { ctx, text } = await say("Note: Email Pavel about the exam, tomorrow!");
+  assert.deepEqual(ctx.calls, [["note", "Email Pavel about the exam, tomorrow"]]);
+  assert.equal(text, "Noted");
+  assert.deepEqual((await say("remember to buy milk")).ctx.calls, [["note", "buy milk"]]);
+  assert.deepEqual((await say("note call Pavel @17:00")).ctx.calls, [["note", "call Pavel @17:00"]]);
+  assert.equal((await say(`note ${"x".repeat(150)}`)).text, "Noted, shortened to 140 characters");
+});
+
+test("repeat and cancel", async () => {
+  assert.equal((await say("repeat that", fakeCtx({ last: "GPU at 13%" }))).text, "GPU at 13%");
+  assert.equal((await say("say that again")).text, "Nothing to repeat yet");
+  const cancel = await say("never mind");
+  assert.equal(cancel.answers[0].feedback, false);
+  assert.equal((await say("stop")).ctx.calls.length, 0);
+  // "stop" alone cancels; with an object it is that object's action.
+  assert.equal(match("stop the music", registry, lists).steps[0].action, "media.pause");
+  assert.equal(match("stop the timer", registry, lists).steps[0].action, "timer.stop");
 });

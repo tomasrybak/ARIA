@@ -5,8 +5,10 @@
 //   id       unique, stable (routines refer to it)
 //   phrases  matcher templates, see matcher.js
 //   bare     optional "{slot:type}" a name alone may stand for ("overwatch")
-//   widget   optional widget id that lights up while the answer shows
+//   widget   optional widget id(s) the action is about (unused by the UI for
+//            now; meant for widgets that light up on what matters)
 //   label    optional (args) → text for "did you mean" options
+//   feedback false for actions that do nothing visible to confirm ("cancel")
 //   run      does the work through `ctx` (injected, so actions are testable
 //            without Tauri); returns an answer string, `{ text, widget }` or nothing
 
@@ -38,13 +40,18 @@ export function describe(registry, step) {
 /** Run one step; failures come back as an answer, never as a throw. */
 export async function runAction(registry, step, ctx) {
   const action = registry.byId.get(step.action);
-  if (!action) return { text: `Unknown action ${step.action}`, error: true };
+  if (!action) return { text: `Unknown action ${step.action}`, feedback: true, error: true };
   try {
     const out = await action.run(ctx, step.args || {});
     const answer = typeof out === "string" ? { text: out } : out || {};
-    return { text: answer.text ?? "", widget: answer.widget ?? action.widget ?? null, error: false };
+    return {
+      text: answer.text ?? "",
+      widget: answer.widget ?? action.widget ?? null,
+      feedback: action.feedback !== false,
+      error: false,
+    };
   } catch (e) {
-    return { text: String(e?.message ?? e), widget: action.widget ?? null, error: true };
+    return { text: String(e?.message ?? e), widget: action.widget ?? null, feedback: true, error: true };
   }
 }
 

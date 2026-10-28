@@ -6021,6 +6021,7 @@ function initSettingsMenu() {
    follow the current data. */
 
 const commands = createRegistry();
+let lastCommandAnswer = null;
 let commandLinks = [];
 // Installed games come from Rust; the list is refreshed in the background on
 // every query, so a game installed a minute ago is found on the next keystroke.
@@ -6080,6 +6081,16 @@ function commandContext() {
     openUrl: openLink,
     music: () => musicData,
     facts: commandFacts,
+    lastAnswer: () => lastCommandAnswer,
+    addNote: (text) => {
+      const next = addNote(notes, text, Date.now());
+      if (next === notes) return null;
+      notes = next;
+      persistNotes();
+      renderNotes();
+      // Appended last, also at the cap where an older note gives way.
+      return notes.at(-1);
+    },
     musicControl: (action) => window.__TAURI__.core.invoke("music_control", { action }),
     showBoard: (name) => {
       const preset = presets.find((p) => p.name === name);
@@ -6197,7 +6208,8 @@ function initCommands() {
     const failed = answers.find((a) => a.error);
     const last = failed ?? answers.at(-1);
     const text = last?.text ?? "";
-    glowBoard();
+    if (answers.some((a) => a.feedback)) glowBoard();
+    if (text && !chosen.steps.some((st) => st.action === "meta.repeat")) lastCommandAnswer = text;
     emitTo("palette", "palette-answer", { id: payload.id, text, error: Boolean(failed) });
   });
 }
