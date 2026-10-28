@@ -79,6 +79,7 @@ import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
+import { coinNames } from "./lib/answers.js";
 import {
   BUILTIN_PRESETS,
   MAX_NAME,
@@ -6036,7 +6037,41 @@ function commandLists() {
     game: commandGames,
     board: presets.map((p) => ({ name: p.name })),
     link: commandLinks,
+    coin: coinNames(cryptoData),
   };
+}
+
+function commandFacts() {
+  const now = Date.now();
+  return {
+    now,
+    hw: hwData,
+    gpu: gpuData,
+    music: musicData,
+    classes: weekClasses(now),
+    email: emailData,
+    freegames: freeGamesData,
+    weather: weatherData,
+    crypto: cryptoData,
+    github: githubData,
+    steam: steamData,
+    screentime: screentimeData,
+  };
+}
+
+// As long as the palette shows the answer (ANSWER_MS in palette.js).
+const ANSWER_GLOW_MS = 4000;
+let answerGlowTimer = null;
+
+/** Light up the board's edge: the HUD's sign that a command was heard and done. */
+function glowBoard() {
+  const el = document.getElementById("answer-glow");
+  el.classList.remove("on");
+  // Reflow so the glow restarts when two commands come in a row.
+  void el.offsetWidth;
+  el.classList.add("on");
+  clearTimeout(answerGlowTimer);
+  answerGlowTimer = setTimeout(() => el.classList.remove("on"), ANSWER_GLOW_MS);
 }
 
 function commandContext() {
@@ -6044,6 +6079,7 @@ function commandContext() {
     registry: commands,
     openUrl: openLink,
     music: () => musicData,
+    facts: commandFacts,
     musicControl: (action) => window.__TAURI__.core.invoke("music_control", { action }),
     showBoard: (name) => {
       const preset = presets.find((p) => p.name === name);
@@ -6159,7 +6195,9 @@ function initCommands() {
     }
     const answers = await runSteps(commands, chosen.steps, commandContext());
     const failed = answers.find((a) => a.error);
-    const text = (failed ?? answers.at(-1))?.text ?? "";
+    const last = failed ?? answers.at(-1);
+    const text = last?.text ?? "";
+    glowBoard();
     emitTo("palette", "palette-answer", { id: payload.id, text, error: Boolean(failed) });
   });
 }

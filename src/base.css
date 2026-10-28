@@ -368,6 +368,36 @@
   }
 }
 
+/* Feedback for a command from the bar or voice: the board's edge lights up
+   while the answer is on screen. An overlay of its own, so it never touches
+   the widgets' entrance animations and looks the same on every board. */
+.answer-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset 0 0 0 2px var(--accent, var(--color-accent, #e8ac53)),
+    inset 0 0 80px color-mix(in srgb, var(--accent, var(--color-accent, #e8ac53)) 40%, transparent);
+}
+
+@keyframes answer-glow {
+  0%, 100% { opacity: 0; }
+  10%, 80% { opacity: 1; }
+}
+
+.answer-glow.on {
+  animation: answer-glow 4s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .answer-glow.on {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* ── display menu (monitor picker + fill toggle) ────────────
    Reuses .theme-menu chrome; monitors have no color swatch. */
 

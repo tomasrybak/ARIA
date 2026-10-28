@@ -7,14 +7,21 @@
 //   ctx.musicControl(op)  "playpause" | "next" | "previous"
 //   ctx.showBoard(name)   apply a board preset, as a click in the menu would
 //   ctx.startTimer(secs)  ctx.stopTimer() → false when no timer was running
+//   ctx.facts()           snapshot of collector data for questions: { now, hw,
+//                         gpu, music, classes, email, freegames, weather,
+//                         crypto, github, steam, screentime }
+//
+// `widget` may be a list: the first of them that is on the board lights up.
 //
 // Name lists for slots (see commandLists in main.js):
 //   game  [{ name, id }]   installed Steam games
 //   board [{ name }]       board presets
 //   link  [{ name, url }]  saved links
+//   coin  [{ name, symbol }] coins on the crypto widget, by symbol and full name
 
 import { defineActions, describe } from "./actions.js";
 import { match } from "./matcher.js";
+import * as answers from "./answers.js";
 
 const HELP_EXAMPLES = 8;
 
@@ -125,6 +132,7 @@ export function buildActions() {
         ctx.openUrl(a.link.url);
       },
     },
+    ...questions(),
     {
       id: "meta.help",
       phrases: ["what can i say", "what can you do", "help", "commands"],
@@ -136,6 +144,52 @@ export function buildActions() {
         return examples.length ? `Try: ${examples.join(" · ")}` : "Nothing to do yet.";
       },
     },
+  ];
+}
+
+/** Read-only answers over data the widgets already have. */
+function questions() {
+  const ask = (id, widget, phrases, answer) => ({ id, widget, phrases, run: (ctx, a) => answer(ctx.facts(), a) });
+  return [
+    ask("ask.gpu", ["gpu", "thermals", "hardware"],
+      ["how hot is my gpu", "gpu temp", "gpu temperature", "gpu usage", "gpu load", "how is my gpu"],
+      (f) => answers.gpuAnswer(f.gpu)),
+    ask("ask.cpu", ["thermals", "hardware"],
+      ["how hot is my cpu", "cpu temp", "cpu temperature", "cpu usage", "cpu load", "how is my cpu"],
+      (f) => answers.cpuAnswer(f.hw)),
+    ask("ask.system", "hardware",
+      ["system status", "how is my pc", "how is my computer", "system load"],
+      (f) => answers.systemAnswer(f.hw, f.gpu)),
+    ask("ask.song", "music",
+      ["whats this song", "what song is this", "whats playing", "what is playing", "current song"],
+      (f) => answers.songAnswer(f.music)),
+    ask("ask.class", "stag",
+      ["next class", "next lecture", "when is my next class", "when is my next lecture", "whats next", "what class do i have"],
+      (f) => answers.nextClassAnswer(f.classes, f.now)),
+    ask("ask.mail", "email",
+      ["any new mail", "any new email", "unread mail", "do i have mail", "check [my] mail", "how many emails"],
+      (f) => answers.mailAnswer(f.email)),
+    ask("ask.freegames", "freegames",
+      ["free games", "any free games", "whats free", "what games are free"],
+      (f) => answers.freeGamesAnswer(f.freegames, f.now)),
+    ask("ask.weather", "weather",
+      ["weather", "whats the weather", "hows the weather", "how warm is it", "how cold is it", "is it cold", "temperature outside"],
+      (f) => answers.weatherAnswer(f.weather)),
+    {
+      ...ask("ask.crypto", "crypto",
+        ["{coin} price", "price of {coin}", "how much is {coin}", "whats {coin} at", "{coin}"],
+        (f, a) => answers.cryptoAnswer(f.crypto, a.coin.symbol)),
+      label: (a) => `${a.coin.name} price`,
+    },
+    ask("ask.github", "github",
+      ["any new prs", "pull requests", "github", "github notifications", "anything on github"],
+      (f) => answers.githubAnswer(f.github)),
+    ask("ask.screentime", "screentime",
+      ["screen time", "how long have i played today", "how long was i on the computer", "how long have i been on the pc"],
+      (f) => answers.screenTimeAnswer(f.screentime)),
+    ask("ask.friends", "steam",
+      ["whos online", "who is online", "which friends are online", "whos playing", "friends online"],
+      (f) => answers.friendsAnswer(f.steam)),
   ];
 }
 
