@@ -774,6 +774,23 @@ function steamSetupForm(err, label, onDone) {
   return form;
 }
 
+// Steam does not tell the API which store an account buys in, so the
+// wishlist is priced by IP unless a country is set here.
+function steamCountryForm(err) {
+  const form = document.createElement("div");
+  form.className = "auth-form";
+  const country = authInput("store country, e.g. CZ (empty = by IP)");
+  country.maxLength = 2;
+  window.__TAURI__.core.invoke("steam_store_country").then((cc) => {
+    if (cc && !country.value) country.value = cc;
+  });
+  form.append(
+    country,
+    authButton("SET COUNTRY", (b) => invokeAuth(b, err, "steam_set_store_country", { country: country.value })),
+  );
+  return form;
+}
+
 function steamFriendRow(f) {
   const row = document.createElement("div");
   row.className = "steam-friend";
@@ -793,6 +810,21 @@ function steamRecentRow(g) {
   row.className = "steam-recent";
   row.title = `${g.name} · ${playtime(g.minutes_total)} in total`;
   row.append(steamAvatar(g.icon, "steam-icon"), wxSpan("steam-name", g.name), wxSpan("steam-hours", playtime(g.minutes_2weeks)));
+  return row;
+}
+
+// A wishlist game on sale; opens its store page. The percentage is left out
+// where the store hides it (EU price rules).
+function steamSaleRow(g) {
+  const row = document.createElement("button");
+  row.className = "steam-sale";
+  row.title = [g.name, g.original && `was ${g.original}`, g.lowest_recent && `lowest recently ${g.lowest_recent}`]
+    .filter(Boolean)
+    .join(" · ");
+  row.addEventListener("click", () => openLink(`https://store.steampowered.com/app/${g.appid}/`));
+  row.append(wxSpan("steam-name", g.name));
+  if (g.show_discount) row.append(wxSpan("steam-discount", `-${g.discount}%`));
+  row.append(wxSpan("steam-price", g.price));
   return row;
 }
 
@@ -871,6 +903,12 @@ function renderSteam() {
   for (const g of p.recent) recent.append(steamRecentRow(g));
   if (!p.recent.length && !(p.hidden ?? []).length) recent.append(wxSpan("fg-empty", "Nothing played lately."));
   right.append(wxSpan("stag-section", "LAST 2 WEEKS"), recent);
+  if (p.sales?.length) {
+    const sales = document.createElement("div");
+    sales.className = "steam-sales fill-list";
+    for (const g of p.sales) sales.append(steamSaleRow(g));
+    right.append(wxSpan("stag-section", "WISHLIST ON SALE"), sales);
+  }
   cols.append(left, right);
   body.append(cols);
 }
@@ -1729,6 +1767,7 @@ function openAuthPanel(id) {
     const connected = steamData?.status === "connected";
     if (connected) panel.append(wxSpan("auth-note", `now: ${steamData.me.name}`));
     panel.append(steamSetupForm(err, connected ? "SAVE" : "CONNECT", closeAuthPanel));
+    if (connected) panel.append(steamCountryForm(err));
     if (connected) {
       const out = logoutBtn("steam_logout");
       out.classList.add("auth-danger");

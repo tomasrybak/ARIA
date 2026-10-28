@@ -4329,6 +4329,52 @@ body.dragging-widget .widget-tray {
   opacity: 0.6;
 }
 
+.steam-sales {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.steam-sale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.steam-sale:hover {
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.steam-sale .steam-name {
+  flex: 1 1 auto;
+}
+
+.steam-discount {
+  flex: none;
+  padding: 2px 5px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: var(--accent, var(--color-accent));
+  font: 600 0.58rem/1 "JetBrains Mono", ui-monospace, monospace;
+}
+
+.steam-price {
+  flex: none;
+  font: 500 0.66rem/1 "JetBrains Mono", ui-monospace, monospace;
+  opacity: 0.8;
+}
+
 /* L: friends and the last two weeks side by side. */
 .steam-cols {
   flex: 1 1 auto;

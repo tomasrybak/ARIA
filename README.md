@@ -27,6 +27,7 @@ Built around a student/dev workflow at ZČU, but every widget is optional and th
 | WEATHER | Current conditions with a "rain from 15:00" line, a 12-hour temperature and rain chart, and a 7-day forecast with details at L | [Open-Meteo](https://open-meteo.com) (free, no key) |
 | CLOCK | Local time in a gauge-style ring, up to three other time zones, and a countdown or 25/5 pomodoro with a chime | Local, `localStorage` |
 | FREE GAMES | Games free to keep right now and coming next, with covers, store and time left; click opens the store page | Epic Games Store, [GamerPower](https://www.gamerpower.com) for Steam/GOG (free, no key) |
+| STEAM | Friends online and what they are playing, the game you are in, your last two weeks with playtime and wishlist games on sale at L; works without a key for the game running here | Steam Web API (your own key) + the Steam store; the local game from the Steam install |
 | NOW PLAYING | Track info, transport controls, playlist shuffle chips | Apple Music (macOS), SMTC (Windows), MPRIS (Linux) |
 | SCREEN TIME | Daily total + top apps by foreground time | Local tracking, idle-aware |
 | NOTES | Things to do, with pins and reminders — `!` pins a line, `@17:00` sets a time | Local, `localStorage` |
@@ -111,7 +112,7 @@ Nothing leaves your machine except the API calls to the services themselves.
 
 ### Moving your settings
 
-Display menu → **Export / import…** saves everything you set up (boards, theme, auto-switch rules, notes, timetables, clock zones, window placement, and the mail / calendar / Discord / weather / wallpaper settings) to one `.aria` file, and loads it on another machine or into another build.
+Display menu → **Export / import…** saves everything you set up (boards, theme, auto-switch rules, notes, timetables, clock zones, window placement, and the mail / calendar / Discord / weather / Steam / wallpaper settings) to one `.aria` file, and loads it on another machine or into another build.
 
 - **Passwords and tokens are never in the file.** They stay in the keychain of the machine they were typed on; after an import, each account asks for its password once.
 - The file is **encrypted with a passphrase** you choose (at least 10 characters): Argon2id (128 MiB, 4 passes) derives the key, ChaCha20-Poly1305 encrypts and authenticates. Without the passphrase it is unreadable, and a modified file is refused rather than half-imported. The passphrase cannot be recovered.
@@ -260,12 +261,22 @@ No setup; CoinGecko's free API.
 ### Weather
 No key. Type a city into the widget, pick the right match, choose °C or °F. Change it later from the widget's gear in edit mode. Weather data by [Open-Meteo](https://open-meteo.com), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
+### Steam
+The game running on this machine shows without any setup. For friends, recent games and wishlist sales:
+
+1. Get a Web API key at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (any domain name works, e.g. `localhost`; Steam only issues keys to accounts that have spent at least $5).
+2. In Steam → your profile → **Edit Profile → Privacy Settings**, set **My profile**, **Friends List** and **Game details** to **Public**. The widget says which one is missing if it cannot see something.
+3. Paste your profile link (or SteamID64) and the key into the STEAM widget at size M.
+
+The key goes to the credential store and is checked with Steam before it is saved; only the SteamID and the store country are written to `steam.json`. Sale prices follow your location unless you set a store country (e.g. `CZ`) in the widget's settings; Steam does not tell the API which store your account buys in. ARIA is not affiliated with Valve; Steam data is used through the [Steam Web API](https://steamcommunity.com/dev).
+
 ## Files
 
 | File | Where | What |
 |---|---|---|
 | `mail.json` | app config dir¹ | mail accounts (managed by the widget, hand-editable) |
 | `weather.json` | app config dir¹ | the chosen place and units |
+| `steam.json` | app config dir¹ | your SteamID and store country (the API key is in the credential store) |
 | `discord.json` | app config dir¹ | server IDs + friends list (managed by the widget, hand-editable) |
 | `discord-popularity.json` | app data dir¹ | per-channel person-minute tallies |
 | `screentime/` | app data dir¹ | daily usage JSONs |

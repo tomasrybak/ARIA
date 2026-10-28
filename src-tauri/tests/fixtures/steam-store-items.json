@@ -1,0 +1,61 @@
+{
+  "response": {
+    "store_items": [
+      {
+        "item_type": 0,
+        "id": 10,
+        "success": 1,
+        "visible": true,
+        "name": "Full Price Game",
+        "store_url_path": "app/10/",
+        "appid": 10,
+        "type": 0,
+        "best_purchase_option": {
+          "final_price_in_cents": "975",
+          "formatted_final_price": "9,75\u20ac",
+          "user_can_purchase_as_gift": true,
+          "hide_discount_pct_for_compliance": false,
+          "included_game_count": 1,
+          "must_purchase_as_set": false,
+          "package_group": "default",
+          "price_cannot_be_displayed_as_discount": false
+        }
+      },
+      {
+        "item_type": 0,
+        "id": 20,
+        "success": 1,
+        "visible": true,
+        "name": "Sale Game",
+        "store_url_path": "app/20/",
+        "appid": 20,
+        "type": 0,
+        "best_purchase_option": {
+          "final_price_in_cents": "975",
+          "original_price_in_cents": "1950",
+          "formatted_final_price": "9,75\u20ac",
+          "formatted_original_price": "19,50\u20ac",
+          "discount_pct": 50,
+          "user_can_purchase_as_gift": true,
+          "hide_discount_pct_for_compliance": true,
+          "included_game_count": 1,
+          "lowest_recent_price_in_cents": "585",
+          "must_purchase_as_set": false,
+          "package_group": "default",
+          "price_cannot_be_displayed_as_discount": false,
+          "formatted_lowest_recent_price": "5,85\u20ac"
+        }
+      },
+      {
+        "item_type": 0,
+        "id": 30,
+        "success": 1,
+        "visible": true,
+        "name": "Unpriced DLC",
+        "store_url_path": "app/30/",
+        "appid": 30,
+        "type": 4
+      }
+    ]
+  }
+}

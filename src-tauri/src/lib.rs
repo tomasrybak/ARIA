@@ -76,6 +76,8 @@ pub fn run() {
             collectors::steam::steam_setup,
             collectors::steam::steam_logout,
             collectors::steam::steam_refresh,
+            collectors::steam::steam_store_country,
+            collectors::steam::steam_set_store_country,
             collectors::email::email_refresh,
             collectors::github::github_refresh,
             collectors::crypto::crypto_refresh,

@@ -1,0 +1,32 @@
+{
+  "10": {
+    "success": true,
+    "data": {
+      "price_overview": {
+        "currency": "EUR",
+        "initial": 975,
+        "final": 975,
+        "discount_percent": 0,
+        "initial_formatted": "",
+        "final_formatted": "9,75\u20ac"
+      }
+    }
+  },
+  "20": {
+    "success": true,
+    "data": {
+      "price_overview": {
+        "currency": "EUR",
+        "initial": 1950,
+        "final": 975,
+        "discount_percent": 50,
+        "initial_formatted": "19,50\u20ac",
+        "final_formatted": "9,75\u20ac"
+      }
+    }
+  },
+  "30": {
+    "success": true,
+    "data": []
+  }
+}

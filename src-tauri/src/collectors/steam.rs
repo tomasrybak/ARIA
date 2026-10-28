@@ -1,9 +1,10 @@
 //! The STEAM widget's Web API side: who of your friends is online and what
-//! they play, and your recently played games. Needs a Web API key and a
-//! public profile; the game running on this machine comes from `steam_local`
-//! and needs neither, so it rides along in every state.
+//! they play, your recently played games and the wishlist games on sale.
+//! Needs a Web API key and a public profile; the game running on this machine
+//! comes from `steam_local` and needs neither, so it rides along in every
+//! state.
 
-use super::http::{self, Throttle};
+use super::http::{self, get_json, FetchError, Throttle};
 use super::steam_local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,14 +15,22 @@ use tauri::{AppHandle, Emitter, Manager};
 const POLL: Duration = Duration::from_secs(60);
 // Playtime moves in minutes and the list changes a few times a day.
 const RECENT_EVERY: Duration = Duration::from_secs(900);
+// Steam sales start and end at fixed times a day; the store API is the
+// tightly rate-limited one, so it is asked rarely and retried slowly.
+const SALES_EVERY: Duration = Duration::from_secs(6 * 3600);
+const SALES_RETRY: Duration = Duration::from_secs(900);
 const BACKOFF_MIN: Duration = Duration::from_secs(60);
 const BACKOFF_MAX: Duration = Duration::from_secs(1800);
 const API: &str = "https://api.steampowered.com";
+const STORE: &str = "https://store.steampowered.com/api";
 const ICON_BASE: &str = "https://media.steampowered.com/steamcommunity/public/images/apps";
 /// GetPlayerSummaries takes at most this many ids per call.
 const SUMMARIES_BATCH: usize = 100;
 const FRIENDS_SHOWN: usize = 12;
 const RECENT_SHOWN: usize = 5;
+const SALES_SHOWN: usize = 6;
+/// Ids per store request; a wishlist can hold hundreds.
+const STORE_BATCH: usize = 100;
 const IMAGE_MAX: usize = 64 * 1024;
 
 /// steam.json. The id stays a string end to end: a SteamID64 is above 2^53,
@@ -29,6 +38,11 @@ const IMAGE_MAX: usize = 64 * 1024;
 #[derive(Deserialize, Serialize)]
 struct SteamConfig {
     steamid: String,
+    /// The store country that prices the wishlist; `None` prices by IP. The
+    /// Web API does not expose the account's store country, and the profile's
+    /// location is free text people fill in for fun.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    country: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -44,6 +58,8 @@ enum SteamState {
         online: usize,
         playing: usize,
         recent: Vec<RecentGame>,
+        /// Wishlist games on sale, the biggest discount first.
+        sales: Vec<Sale>,
         /// What the privacy settings keep from us. Each one empties its part
         /// of the widget, which then names the setting to change.
         hidden: Vec<Hidden>,
@@ -102,6 +118,23 @@ struct RecentGame {
     icon_url: Option<String>,
 }
 
+#[derive(Serialize, Clone, Debug, PartialEq)]
+struct Sale {
+    appid: u32,
+    name: String,
+    /// Sorts the list; shown only when `show_discount`.
+    discount: u32,
+    /// False where the store itself hides the percentage (EU price rules,
+    /// when the price was lower in recent weeks).
+    show_discount: bool,
+    /// Formatted by the store in the store's currency, e.g. "9,75€".
+    price: String,
+    original: String,
+    /// The lowest price of recent weeks, which tells a real sale from a
+    /// discount off a raised price. Only `GetItems` reports it.
+    lowest_recent: Option<String>,
+}
+
 #[derive(Debug)]
 enum ApiError {
     Status(u16),
@@ -112,9 +145,12 @@ enum ApiError {
 #[derive(Default)]
 struct Cache {
     steamid: String,
+    country: Option<String>,
     /// `None` until the first successful fetch, `Some(None)` while private.
     recent: Option<Option<Vec<RecentGame>>>,
     recent_at: Option<Instant>,
+    sales: Vec<Sale>,
+    sales_next: Option<Instant>,
     images: HashMap<String, String>,
 }
 
@@ -146,10 +182,15 @@ pub fn spawn(app: AppHandle, mut ready: tokio::sync::watch::Receiver<bool>) {
                     SteamState::Disconnected { reason }
                 }
                 Ok(_) if throttle.active() => last_or_disconnected(&last_ok, "rate limited"),
-                Ok((key, steamid)) => {
+                Ok((key, SteamConfig { steamid, country })) => {
                     if cache.steamid != steamid {
                         cache = Cache { steamid: steamid.clone(), ..Cache::default() };
                         last_ok = None;
+                    }
+                    if cache.country != country {
+                        cache.country = country;
+                        cache.sales.clear();
+                        cache.sales_next = None;
                     }
                     match poll(&client, &images, &key, &steamid, &mut cache).await {
                         Ok(s) => {
@@ -186,10 +227,9 @@ fn last_or_disconnected(last_ok: &Option<SteamState>, reason: &str) -> SteamStat
     last_ok.clone().unwrap_or_else(|| SteamState::Disconnected { reason: reason.into() })
 }
 
-fn credentials(app: &AppHandle) -> Result<(String, String), String> {
+fn credentials(app: &AppHandle) -> Result<(String, SteamConfig), String> {
     let key = super::keychain_secret("steam").map_err(|_| "not connected".to_string())?;
-    let cfg = load_config(app)?;
-    Ok((key, cfg.steamid))
+    Ok((key, load_config(app)?))
 }
 
 async fn poll(client: &reqwest::Client, images: &reqwest::Client, key: &str, steamid: &str, cache: &mut Cache) -> Result<SteamState, ApiError> {
@@ -234,6 +274,22 @@ async fn poll(client: &reqwest::Client, images: &reqwest::Client, key: &str, ste
             Err(e) => eprintln!("steam: recent games: {}", describe(&e)),
         }
     }
+    if cache.sales_next.is_none_or(|t| Instant::now() >= t) {
+        let wait = match wishlist_sales(images, steamid, cache.country.as_deref()).await {
+            Ok(sales) => {
+                cache.sales = sales;
+                SALES_EVERY
+            }
+            Err(FetchError::RateLimited(after)) => after.unwrap_or(SALES_RETRY).max(SALES_RETRY),
+            Err(FetchError::Other(e)) => {
+                eprintln!("steam: wishlist: {e}");
+                SALES_RETRY
+            }
+        };
+        cache.sales_next = Some(Instant::now() + wait);
+    }
+    let sales = cache.sales.clone();
+
     let mut recent = match &cache.recent {
         Some(Some(games)) => games.clone(),
         Some(None) => {
@@ -270,7 +326,7 @@ async fn poll(client: &reqwest::Client, images: &reqwest::Client, key: &str, ste
         g.icon = image(&g.icon_url);
     }
 
-    Ok(SteamState::Connected { me, friends, online, playing, recent, hidden })
+    Ok(SteamState::Connected { me, friends, online, playing, recent, sales, hidden })
 }
 
 /// For Web API calls only. Redirects are not followed: the key is in the
@@ -390,6 +446,111 @@ fn parse_recent(v: &Value) -> Option<Vec<RecentGame>> {
     )
 }
 
+/// The wishlist needs no key, and the store calls neither, so these go
+/// through the shared keyless fetch. With a store country one
+/// `GetItems` call has names and prices; without it `appdetails` prices by
+/// the caller's IP and `GetItems` is asked only for the names.
+async fn wishlist_sales(client: &reqwest::Client, steamid: &str, country: Option<&str>) -> Result<Vec<Sale>, FetchError> {
+    let url = reqwest::Url::parse_with_params(&format!("{API}/IWishlistService/GetWishlist/v1/"), &[("steamid", steamid)])
+        .map_err(|e| FetchError::Other(e.to_string()))?;
+    let ids = parse_wishlist(&get_json(client, url.as_str()).await?);
+    let mut sales = Vec::new();
+    for chunk in ids.chunks(STORE_BATCH) {
+        if let Some(cc) = country {
+            sales.extend(parse_items(&get_json(client, items_url(chunk, cc)?.as_str()).await?));
+            continue;
+        }
+        let ids: Vec<String> = chunk.iter().map(u32::to_string).collect();
+        let url = format!("{STORE}/appdetails?appids={}&filters=price_overview", ids.join(","));
+        let priced = parse_price_overview(&get_json(client, &url).await?);
+        if priced.is_empty() {
+            continue;
+        }
+        let on_sale: Vec<u32> = priced.iter().map(|s| s.appid).collect();
+        let names = parse_names(&get_json(client, items_url(&on_sale, "US")?.as_str()).await?);
+        sales.extend(priced.into_iter().filter_map(|s| Some(Sale { name: names.get(&s.appid)?.clone(), ..s })));
+    }
+    sales.sort_by(|a, b| b.discount.cmp(&a.discount).then_with(|| a.name.cmp(&b.name)));
+    sales.truncate(SALES_SHOWN);
+    Ok(sales)
+}
+
+fn items_url(appids: &[u32], country: &str) -> Result<reqwest::Url, FetchError> {
+    let input = serde_json::json!({
+        "ids": appids.iter().map(|id| serde_json::json!({ "appid": id })).collect::<Vec<_>>(),
+        "context": { "language": "english", "country_code": country },
+    });
+    reqwest::Url::parse_with_params(
+        &format!("{API}/IStoreBrowseService/GetItems/v1/"),
+        &[("input_json", input.to_string())],
+    )
+    .map_err(|e| FetchError::Other(e.to_string()))
+}
+
+/// A private wishlist and an empty one answer the same: no `items`.
+fn parse_wishlist(v: &Value) -> Vec<u32> {
+    v["response"]["items"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(|i| u32::try_from(i["appid"].as_u64()?).ok())
+        .collect()
+}
+
+/// Discounted items only; a game with no price (unreleased, delisted) has no
+/// `best_purchase_option` at all.
+fn parse_items(v: &Value) -> Vec<Sale> {
+    store_items(v)
+        .filter_map(|it| {
+            let o = &it["best_purchase_option"];
+            let discount = o["discount_pct"].as_u64().filter(|d| *d > 0)? as u32;
+            Some(Sale {
+                appid: u32::try_from(it["appid"].as_u64()?).ok()?,
+                name: it["name"].as_str()?.to_string(),
+                discount,
+                show_discount: !o["hide_discount_pct_for_compliance"].as_bool().unwrap_or(false),
+                price: o["formatted_final_price"].as_str()?.to_string(),
+                original: o["formatted_original_price"].as_str().unwrap_or("").to_string(),
+                lowest_recent: o["formatted_lowest_recent_price"].as_str().map(str::to_string),
+            })
+        })
+        .collect()
+}
+
+fn parse_names(v: &Value) -> HashMap<u32, String> {
+    store_items(v)
+        .filter_map(|it| Some((u32::try_from(it["appid"].as_u64()?).ok()?, it["name"].as_str()?.to_string())))
+        .collect()
+}
+
+fn store_items(v: &Value) -> impl Iterator<Item = &Value> {
+    v["response"]["store_items"].as_array().map(Vec::as_slice).unwrap_or(&[]).iter()
+}
+
+/// `appdetails` keys by appid; a free game's `data` is an empty array rather
+/// than an object, so it simply has no `price_overview`. Names are left empty
+/// for the caller to fill.
+fn parse_price_overview(v: &Value) -> Vec<Sale> {
+    let Some(map) = v.as_object() else { return Vec::new() };
+    map.iter()
+        .filter_map(|(id, entry)| {
+            let p = &entry["data"]["price_overview"];
+            let discount = p["discount_percent"].as_u64().filter(|d| *d > 0)? as u32;
+            Some(Sale {
+                appid: id.parse().ok()?,
+                name: String::new(),
+                discount,
+                // appdetails does not say; the store page is the authority.
+                show_discount: true,
+                price: p["final_formatted"].as_str()?.to_string(),
+                original: p["initial_formatted"].as_str().unwrap_or("").to_string(),
+                lowest_recent: None,
+            })
+        })
+        .collect()
+}
+
 #[derive(Debug, PartialEq)]
 enum ProfileRef {
     Id(String),
@@ -464,7 +625,9 @@ pub async fn steam_setup(app: AppHandle, key: String, profile: String) -> Result
         }
     };
     super::store_secret("steam", &key)?;
-    save_config(&app, &SteamConfig { steamid })?;
+    // A new key or profile keeps the store country already chosen.
+    let country = load_config(&app).ok().and_then(|c| c.country);
+    save_config(&app, &SteamConfig { steamid, country })?;
     REFRESH.notify_one();
     Ok(())
 }
@@ -482,6 +645,33 @@ pub fn steam_logout(app: AppHandle) -> Result<(), String> {
     }
     REFRESH.notify_one();
     Ok(())
+}
+
+/// The chosen store country, for the gear panel.
+#[tauri::command]
+pub fn steam_store_country(app: AppHandle) -> Option<String> {
+    load_config(&app).ok()?.country
+}
+
+/// An empty field goes back to pricing by IP.
+#[tauri::command]
+pub fn steam_set_store_country(app: AppHandle, country: String) -> Result<(), String> {
+    let mut cfg = load_config(&app)?;
+    cfg.country = parse_country(&country)?;
+    save_config(&app, &cfg)?;
+    REFRESH.notify_one();
+    Ok(())
+}
+
+fn parse_country(input: &str) -> Result<Option<String>, String> {
+    let cc = input.trim().to_ascii_uppercase();
+    if cc.is_empty() {
+        return Ok(None);
+    }
+    if cc.len() != 2 || !cc.bytes().all(|b| b.is_ascii_uppercase()) {
+        return Err("a store country is a two-letter code, e.g. CZ or DE".into());
+    }
+    Ok(Some(cc))
 }
 
 fn config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -513,6 +703,9 @@ mod tests {
             "friends" => include_str!("../../tests/fixtures/steam-friendlist.json"),
             "players" => include_str!("../../tests/fixtures/steam-player-summaries.json"),
             "recent" => include_str!("../../tests/fixtures/steam-recent-games.json"),
+            "wishlist" => include_str!("../../tests/fixtures/steam-wishlist.json"),
+            "items" => include_str!("../../tests/fixtures/steam-store-items.json"),
+            "appdetails" => include_str!("../../tests/fixtures/steam-appdetails.json"),
             _ => unreachable!(),
         };
         serde_json::from_str(raw).unwrap()
@@ -585,6 +778,63 @@ mod tests {
     fn private_game_details_differ_from_nothing_played() {
         assert_eq!(parse_recent(&serde_json::json!({ "response": {} })), None);
         assert_eq!(parse_recent(&serde_json::json!({ "response": { "total_count": 0 } })), Some(vec![]));
+    }
+
+    #[test]
+    fn wishlist_ids_parse_and_private_is_empty() {
+        assert_eq!(parse_wishlist(&fixture("wishlist")), vec![10, 20, 30]);
+        assert!(parse_wishlist(&serde_json::json!({ "response": {} })).is_empty());
+    }
+
+    #[test]
+    fn store_items_keep_only_discounted_games() {
+        let sales = parse_items(&fixture("items"));
+        assert_eq!(sales.len(), 1);
+        let s = &sales[0];
+        assert_eq!((s.appid, s.discount), (20, 50));
+        assert_eq!(s.price, "9,75€");
+        assert_eq!(s.original, "19,50€");
+        assert!(s.lowest_recent.is_some());
+        assert!(!s.show_discount, "the fixture's sale hides its percentage, as Steam does in the EU");
+    }
+
+    #[test]
+    fn names_cover_every_item_with_one() {
+        let names = parse_names(&fixture("items"));
+        assert_eq!(names.len(), 3);
+        assert_eq!(names[&20], "Sale Game");
+    }
+
+    #[test]
+    fn appdetails_skips_full_price_and_free_games() {
+        let sales = parse_price_overview(&fixture("appdetails"));
+        assert_eq!(sales.len(), 1);
+        assert_eq!((sales[0].appid, sales[0].discount), (20, 50));
+        assert_eq!(sales[0].original, "19,50€");
+        assert!(sales[0].name.is_empty());
+    }
+
+    #[test]
+    fn store_country_is_two_letters_or_nothing() {
+        assert_eq!(parse_country(" cz ").unwrap().as_deref(), Some("CZ"));
+        assert_eq!(parse_country("").unwrap(), None);
+        assert!(parse_country("CZE").is_err());
+        assert!(parse_country("C1").is_err());
+    }
+
+    #[test]
+    fn config_without_a_country_still_loads() {
+        let cfg: SteamConfig = serde_json::from_str(r#"{"steamid":"1"}"#).unwrap();
+        assert_eq!(cfg.country, None);
+    }
+
+    #[test]
+    fn items_url_carries_ids_and_country() {
+        let url = items_url(&[10, 20], "CZ").ok().expect("a valid URL");
+        let input = url.query_pairs().find(|(k, _)| k == "input_json").unwrap().1;
+        let v: Value = serde_json::from_str(&input).unwrap();
+        assert_eq!(v["ids"][1]["appid"], 20);
+        assert_eq!(v["context"]["country_code"], "CZ");
     }
 
     #[test]
