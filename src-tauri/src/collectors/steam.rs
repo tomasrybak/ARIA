@@ -26,7 +26,8 @@ const STORE: &str = "https://store.steampowered.com/api";
 const ICON_BASE: &str = "https://media.steampowered.com/steamcommunity/public/images/apps";
 /// GetPlayerSummaries takes at most this many ids per call.
 const SUMMARIES_BATCH: usize = 100;
-const FRIENDS_SHOWN: usize = 12;
+/// Two columns' worth at L; smaller sizes fade-clip the same list.
+const FRIENDS_SHOWN: usize = 24;
 const RECENT_SHOWN: usize = 5;
 const SALES_SHOWN: usize = 6;
 /// Ids per store request; a wishlist can hold hundreds.

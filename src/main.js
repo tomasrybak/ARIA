@@ -895,6 +895,8 @@ function renderSteam() {
   cols.className = "steam-cols";
   const left = document.createElement("div");
   left.className = "stag-col";
+  // Column-major, so the list still reads top to bottom, playing first.
+  friends.style.gridTemplateRows = `repeat(${Math.max(1, Math.ceil(p.friends.length / 2))}, auto)`;
   left.append(wxSpan("stag-section", "FRIENDS"), friends);
   const right = document.createElement("div");
   right.className = "stag-col";
