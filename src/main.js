@@ -77,7 +77,7 @@ import {
 } from "./lib/notes.js";
 import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
-import { createRegistry, suggest } from "./lib/commands.js";
+import { appsWithoutGames, createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
 import { coinNames } from "./lib/answers.js";
 import {
@@ -6033,8 +6033,21 @@ function refreshCommandGames() {
     .catch(() => {});
 }
 
+// Apps are listed from disk (GIO / Start Menu / Applications), so at most
+// every APPS_REFRESH_MS rather than on every keystroke.
+const APPS_REFRESH_MS = 30_000;
+let commandApps = [];
+let commandAppsAt = 0;
+
+function refreshCommandApps() {
+  if (Date.now() - commandAppsAt < APPS_REFRESH_MS) return;
+  commandAppsAt = Date.now();
+  window.__TAURI__.core.invoke("apps_list").then((apps) => (commandApps = apps)).catch(() => {});
+}
+
 function commandLists() {
   return {
+    app: appsWithoutGames(commandApps, commandGames),
     game: commandGames,
     board: presets.map((p) => ({ name: p.name })),
     link: commandLinks,
@@ -6093,6 +6106,7 @@ function commandContext() {
     },
     musicControl: (action) => window.__TAURI__.core.invoke("music_control", { action }),
     volume: (op) => window.__TAURI__.core.invoke("volume", { op }),
+    launchApp: (id) => window.__TAURI__.core.invoke("apps_launch", { id }),
     showBoard: (name) => {
       const preset = presets.find((p) => p.name === name);
       if (preset) showBoard(preset);
@@ -6193,8 +6207,10 @@ function initCommands() {
   }).catch(() => {});
   initLinksPanel();
   refreshCommandGames();
+  refreshCommandApps();
   listen("palette-query", ({ payload }) => {
     refreshCommandGames();
+    refreshCommandApps();
     const out = suggest(commands, payload.text, commandLists());
     emitTo("palette", "palette-result", { id: payload.id, ...out, items: out.items.map((i) => ({ label: i.label })) });
   });

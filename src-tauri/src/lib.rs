@@ -1,3 +1,4 @@
+mod apps;
 mod collectors;
 mod terminal;
 mod palette;
@@ -67,6 +68,8 @@ pub fn run() {
             window::place_on_monitor,
             palette::palette_open,
             system::volume,
+            apps::apps_list,
+            apps::apps_launch,
             collectors::history::history_report,
             settings::settings_export,
             settings::settings_open,

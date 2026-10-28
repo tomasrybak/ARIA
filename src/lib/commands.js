@@ -6,6 +6,7 @@
 //   ctx.music()           latest "music" collector state, or null
 //   ctx.musicControl(op)  "playpause" | "next" | "previous"
 //   ctx.showBoard(name)   apply a board preset, as a click in the menu would
+//   ctx.launchApp(id)     start an app from the `app` list
 //   ctx.volume(op)        { op: "up"|"down"|"mute"|"unmute" } or { op: "set", level }
 //                         → { percent, muted } after the change
 //   ctx.startTimer(secs)  ctx.stopTimer() → false when no timer was running
@@ -18,6 +19,7 @@
 // `widget` may be a list: the first of them that is on the board lights up.
 //
 // Name lists for slots (see commandLists in main.js):
+//   app   [{ name, id }]   installed apps, minus the Steam games among them
 //   game  [{ name, id }]   installed Steam games
 //   board [{ name }]       board presets
 //   link  [{ name, url }]  saved links
@@ -57,6 +59,16 @@ export function buildActions() {
       run: (ctx, a) => {
         ctx.openUrl(`steam://rungameid/${a.game.id}`);
         return `Launching ${a.game.name}`;
+      },
+    },
+    {
+      id: "app.open",
+      phrases: ["open {app}", "launch {app}", "start {app}", "run {app}"],
+      bare: "{app}",
+      label: (a) => `Open ${a.app.name}`,
+      run: async (ctx, a) => {
+        await ctx.launchApp(a.app.id);
+        return `Opening ${a.app.name}`;
       },
     },
     {
@@ -243,6 +255,16 @@ function questions() {
       ["whos online", "who is online", "which friends are online", "whos playing", "friends online"],
       (f) => answers.friendsAnswer(f.steam)),
   ];
+}
+
+/**
+ * Steam puts a desktop entry (Start Menu shortcut) next to each game it
+ * installs, so the same name would be both an app and a game and every
+ * "launch X" would ask which. The game wins: it starts through Steam.
+ */
+export function appsWithoutGames(apps, games) {
+  const names = new Set(games.map((g) => g.name.toLowerCase()));
+  return apps.filter((a) => !names.has(a.name.toLowerCase()));
 }
 
 export function createRegistry() {

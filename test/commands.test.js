@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defineActions, runAction, runSteps } from "../src/lib/actions.js";
-import { buildActions, createRegistry, spokenDuration, suggest } from "../src/lib/commands.js";
+import { appsWithoutGames, buildActions, createRegistry, spokenDuration, suggest } from "../src/lib/commands.js";
 import { match } from "../src/lib/matcher.js";
 
 const registry = createRegistry();
@@ -13,6 +13,7 @@ const lists = {
   ],
   board: [{ name: "Gaming" }, { name: "Study" }, { name: "Coding" }],
   link: [{ name: "notes", url: "https://example.com/notes" }, { name: "STAG", url: "https://stag.zcu.cz" }],
+  app: [{ name: "Firefox", id: "firefox.desktop" }, { name: "Discord", id: "discord.desktop" }],
 };
 
 /** A ctx that records what the actions asked for. */
@@ -29,6 +30,7 @@ function fakeCtx({ music = null, timer = false, last = null } = {}) {
     stopTimer: () => (calls.push(["stop"]), timer),
     addNote: (text) => (calls.push(["note", text]), text.trim() ? { text: text.trim().slice(0, 140) } : null),
     lastAnswer: () => last,
+    launchApp: async (id) => calls.push(["app", id]),
     volume: async (op) => {
       calls.push(["volume", op]);
       return op.op === "mute" ? { percent: 40, muted: true } : { percent: op.level ?? 50, muted: false };
@@ -149,4 +151,14 @@ test("volume", async () => {
   assert.deepEqual(set.ctx.calls, [["volume", { op: "set", level: 30 }]]);
   assert.equal(set.text, "Volume 30%");
   assert.equal((await say("volume 150")).text, "Volume goes from 0 to 100");
+});
+
+test("apps open by phrase or bare name; Steam's game shortcuts stay games", async () => {
+  assert.deepEqual((await say("open firefox")).ctx.calls, [["app", "firefox.desktop"]]);
+  const discord = await say("Discord");
+  assert.deepEqual(discord.ctx.calls, [["app", "discord.desktop"]]);
+  assert.equal(discord.text, "Opening Discord");
+
+  const apps = [{ name: "Firefox", id: "f" }, { name: "Counter-Strike 2", id: "cs2.desktop" }];
+  assert.deepEqual(appsWithoutGames(apps, [{ name: "Counter-Strike 2", id: 730 }]), [{ name: "Firefox", id: "f" }]);
 });
