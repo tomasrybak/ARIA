@@ -79,6 +79,7 @@ import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { appsWithoutGames, createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
+import { FILE_OPENS_KEY, fileLists, parseOpens, recordOpen } from "./lib/files.js";
 import { coinNames } from "./lib/answers.js";
 import {
   BUILTIN_PRESETS,
@@ -6045,13 +6046,26 @@ function refreshCommandApps() {
   window.__TAURI__.core.invoke("apps_list").then((apps) => (commandApps = apps)).catch(() => {});
 }
 
-function commandLists() {
+// File hits are asked for per query (Rust narrows the index to a few dozen);
+// the last answer is kept so a run acts on exactly what the palette showed.
+let fileHits = { text: null, hits: [] };
+let fileOpens = {};
+
+async function searchFiles(text) {
+  if (fileHits.text === text) return fileHits.hits;
+  const hits = await window.__TAURI__.core.invoke("files_search", { text }).catch(() => []);
+  fileHits = { text, hits };
+  return hits;
+}
+
+function commandLists(hits) {
   return {
     app: appsWithoutGames(commandApps, commandGames),
     game: commandGames,
     board: presets.map((p) => ({ name: p.name })),
     link: commandLinks,
     coin: coinNames(cryptoData),
+    ...fileLists(hits, fileOpens),
   };
 }
 
@@ -6107,6 +6121,15 @@ function commandContext() {
     musicControl: (action) => window.__TAURI__.core.invoke("music_control", { action }),
     volume: (op) => window.__TAURI__.core.invoke("volume", { op }),
     launchApp: (id) => window.__TAURI__.core.invoke("apps_launch", { id }),
+    openFile: async (path) => {
+      await window.__TAURI__.core.invoke("files_open", { path });
+      fileOpens = recordOpen(fileOpens, path, Date.now());
+      try {
+        localStorage.setItem(FILE_OPENS_KEY, JSON.stringify(fileOpens));
+      } catch {}
+    },
+    revealFile: (path) => window.__TAURI__.core.invoke("files_reveal", { path }),
+    latestDownload: () => window.__TAURI__.core.invoke("files_latest"),
     showBoard: (name) => {
       const preset = presets.find((p) => p.name === name);
       if (preset) showBoard(preset);
@@ -6206,16 +6229,21 @@ function initCommands() {
     if (server === "wayland") btn.title = "Command bar (bind `aria --command` to a shortcut)";
   }).catch(() => {});
   initLinksPanel();
+  try {
+    fileOpens = parseOpens(localStorage.getItem(FILE_OPENS_KEY));
+  } catch {}
   refreshCommandGames();
   refreshCommandApps();
-  listen("palette-query", ({ payload }) => {
+  listen("palette-query", async ({ payload }) => {
     refreshCommandGames();
     refreshCommandApps();
-    const out = suggest(commands, payload.text, commandLists());
+    const hits = await searchFiles(payload.text);
+    const out = suggest(commands, payload.text, commandLists(hits));
     emitTo("palette", "palette-result", { id: payload.id, ...out, items: out.items.map((i) => ({ label: i.label })) });
   });
   listen("palette-run", async ({ payload }) => {
-    const { items } = suggest(commands, payload.text, commandLists());
+    const hits = await searchFiles(payload.text);
+    const { items } = suggest(commands, payload.text, commandLists(hits));
     const chosen = items[payload.index] ?? items[0];
     if (!chosen) {
       emitTo("palette", "palette-answer", { id: payload.id, text: "Didn't catch that.", error: false });

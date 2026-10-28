@@ -7,6 +7,7 @@ import {
   nameScore,
   normalize,
   parseDuration,
+  rankNames,
   parseTemplate,
   tokenize,
 } from "../src/lib/matcher.js";
@@ -72,6 +73,18 @@ test("names: exact, partial, joined spelling and initials", () => {
   assert.ok(nameScore("counterstrike 2", "Counter-Strike 2") >= RUN_SCORE);
   assert.ok(nameScore("cs 2", "Counter-Strike 2") >= RUN_SCORE);
   assert.ok(nameScore("minecraft", "Overwatch 2") < 0.5);
+});
+
+test("item weight scales a name score and a bonus adds to it", () => {
+  const [thesis] = rankNames("thesis", [{ name: "Thesis", weight: 0.9 }]);
+  assert.ok(Math.abs(thesis.score - 0.9) < 1e-9);
+  const [boosted] = rankNames("thesis", [{ name: "Thesis", weight: 0.9, bonus: 0.1 }]);
+  assert.ok(Math.abs(boosted.score - 0.99) < 1e-9);
+  assert.equal(rankNames("thesis", [{ name: "Thesis", bonus: 0.5 }])[0].score, 1);
+  // A bonus strengthens a match but doesn't lift an unrelated name.
+  const plain = nameScore("thesis", "Budget");
+  const [budget] = rankNames("thesis", [{ name: "Budget", bonus: 0.1 }]);
+  assert.ok((budget?.score ?? 0) <= plain * 1.1 + 1e-9);
 });
 
 test("a phrase with a name slot runs the action with the list item", () => {

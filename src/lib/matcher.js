@@ -205,10 +205,15 @@ export function nameScore(query, name) {
   return Math.max(words, joined, acronym);
 }
 
-/** Best items of a list for a query, best first, each `{ item, score }`. */
+/**
+ * Best items of a list for a query, best first, each `{ item, score }`.
+ * An item may carry `weight` (so one kind of name can yield to another) and
+ * `bonus` (e.g. for things used often). Both scale the name score, so a bonus
+ * strengthens a match but never makes one out of an unrelated name.
+ */
 export function rankNames(query, items, limit = MAX_SUGGESTIONS) {
   return items
-    .map((item) => ({ item, score: nameScore(query, item.name) }))
+    .map((item) => ({ item, score: Math.min(1, nameScore(query, item.name) * (item.weight ?? 1) * (1 + (item.bonus ?? 0))) }))
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);

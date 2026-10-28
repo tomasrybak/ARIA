@@ -7,6 +7,9 @@
 //   ctx.musicControl(op)  "playpause" | "next" | "previous"
 //   ctx.showBoard(name)   apply a board preset, as a click in the menu would
 //   ctx.launchApp(id)     start an app from the `app` list
+//   ctx.openFile(path)    open a `file`/`folder` item with its default app
+//   ctx.revealFile(path)  show it selected in the file manager
+//   ctx.latestDownload()  newest file in Downloads (a file hit), or null
 //   ctx.volume(op)        { op: "up"|"down"|"mute"|"unmute" } or { op: "set", level }
 //                         → { percent, muted } after the change
 //   ctx.startTimer(secs)  ctx.stopTimer() → false when no timer was running
@@ -24,9 +27,12 @@
 //   board [{ name }]       board presets
 //   link  [{ name, url }]  saved links
 //   coin  [{ name, symbol }] coins on the crypto widget, by symbol and full name
+//   file, folder [{ name, path, folder, weight, bonus }]  file search hits for
+//                          this query (see lib/files.js)
 
 import { defineActions, describe } from "./actions.js";
 import { match } from "./matcher.js";
+import { fileLabel } from "./files.js";
 import * as answers from "./answers.js";
 
 const HELP_EXAMPLES = 8;
@@ -147,6 +153,43 @@ export function buildActions() {
       label: (a) => `Open ${a.link.name}`,
       run: (ctx, a) => {
         ctx.openUrl(a.link.url);
+      },
+    },
+    {
+      id: "file.open",
+      phrases: ["open {file}"],
+      bare: "{file}",
+      label: (a) => `Open ${fileLabel(a.file)}`,
+      run: async (ctx, a) => {
+        await ctx.openFile(a.file.path);
+        return `Opening ${a.file.name}`;
+      },
+    },
+    {
+      id: "folder.open",
+      phrases: ["open {folder}", "open [the] {folder} folder", "show [the] {folder} folder"],
+      label: (a) => `Open folder ${fileLabel(a.folder)}`,
+      run: async (ctx, a) => {
+        await ctx.openFile(a.folder.path);
+        return `Opening ${a.folder.name}`;
+      },
+    },
+    {
+      id: "file.reveal",
+      phrases: ["reveal {file}", "show {file} in [the] folder", "where is {file}"],
+      label: (a) => `Show ${fileLabel(a.file)} in its folder`,
+      run: async (ctx, a) => {
+        await ctx.revealFile(a.file.path);
+      },
+    },
+    {
+      id: "file.latest",
+      phrases: ["open [the] latest download", "open [the] last download", "latest download", "last download"],
+      run: async (ctx) => {
+        const file = await ctx.latestDownload();
+        if (!file) return "No downloads found. Is file search on?";
+        await ctx.openFile(file.path);
+        return `Opening ${file.name}`;
       },
     },
     {

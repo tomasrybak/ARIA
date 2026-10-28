@@ -162,3 +162,43 @@ test("apps open by phrase or bare name; Steam's game shortcuts stay games", asyn
   const apps = [{ name: "Firefox", id: "f" }, { name: "Counter-Strike 2", id: "cs2.desktop" }];
   assert.deepEqual(appsWithoutGames(apps, [{ name: "Counter-Strike 2", id: 730 }]), [{ name: "Firefox", id: "f" }]);
 });
+
+test("files: open by name, extension, folder, reveal and latest download", async () => {
+  const file = (name, folder, extra = {}) => ({ name, path: `/${folder}/${name}`, folder, weight: 0.9, bonus: 0, ...extra });
+  const fileLists = {
+    ...lists,
+    file: [file("xyz.xls", "Documents"), file("xyz.pdf", "Downloads"), file("Firefox.txt", "Documents")],
+    folder: [{ ...file("ARIA", "Dev") }],
+  };
+  const calls = [];
+  const ctx = {
+    ...fakeCtx(),
+    openFile: async (path) => calls.push(["open", path]),
+    revealFile: async (path) => calls.push(["reveal", path]),
+    latestDownload: async () => ({ name: "new.zip", path: "/Downloads/new.zip" }),
+  };
+  const runFile = async (text, lists = fileLists) => {
+    const m = match(text, registry, lists);
+    assert.equal(m.kind, "run", `"${text}" should run, got ${JSON.stringify(m)}`);
+    return (await runSteps(registry, m.steps, ctx)).at(-1).text;
+  };
+
+  assert.equal(await runFile("open xyz.xls"), "Opening xyz.xls");
+  assert.equal(await runFile("open the ARIA folder"), "Opening ARIA");
+  await runFile("reveal xyz.pdf");
+  assert.equal(await runFile("open latest download"), "Opening new.zip");
+  assert.deepEqual(calls, [["open", "/Documents/xyz.xls"], ["open", "/Dev/ARIA"], ["reveal", "/Downloads/xyz.pdf"],
+    ["open", "/Downloads/new.zip"]]);
+
+  // Same name, two extensions: asks, until one has been opened a few times.
+  const tie = match("open xyz", registry, fileLists);
+  assert.equal(tie.kind, "choose");
+  assert.match(suggest(registry, "open xyz", fileLists).items[0].label, /— (Documents|Downloads)$/);
+  const used = { ...fileLists, file: [file("xyz.xls", "Documents", { bonus: 0.07 }), file("xyz.pdf", "Downloads")] };
+  assert.equal(await runFile("open xyz", used), "Opening xyz.xls");
+
+  // An app keeps its name over a file called the same.
+  const app = match("open firefox", registry, fileLists);
+  assert.equal(app.kind, "run");
+  assert.equal(app.steps[0].action, "app.open");
+});
