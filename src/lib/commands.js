@@ -6,6 +6,8 @@
 //   ctx.music()           latest "music" collector state, or null
 //   ctx.musicControl(op)  "playpause" | "next" | "previous"
 //   ctx.showBoard(name)   apply a board preset, as a click in the menu would
+//   ctx.volume(op)        { op: "up"|"down"|"mute"|"unmute" } or { op: "set", level }
+//                         → { percent, muted } after the change
 //   ctx.startTimer(secs)  ctx.stopTimer() → false when no timer was running
 //   ctx.addNote(text)     add to the Notes widget → the note as stored
 //   ctx.lastAnswer()      the last answer worth repeating, or null
@@ -88,6 +90,7 @@ export function buildActions() {
         await ctx.musicControl("playpause");
       },
     },
+    ...volumeActions(),
     {
       id: "music.search",
       phrases: ["search apple music for {query:text}", "find {query:text} on apple music", "apple music {query:text}"],
@@ -168,6 +171,29 @@ export function buildActions() {
           .slice(0, HELP_EXAMPLES)
           .map((a) => a.phrases[0].replace(/\[[^\]]*\]\s*/g, "").replace(/\{(\w+)(:\w+)?\}/g, "<$1>"));
         return examples.length ? `Try: ${examples.join(" · ")}` : "Nothing to do yet.";
+      },
+    },
+  ];
+}
+
+function volumeAnswer(v) {
+  return v.muted ? `Muted, volume ${v.percent}%` : `Volume ${v.percent}%`;
+}
+
+function volumeActions() {
+  const act = (id, phrases, op) => ({ id, phrases, run: async (ctx) => volumeAnswer(await ctx.volume({ op })) });
+  return [
+    act("volume.up", ["volume up", "louder", "turn [it] up", "increase [the] volume"], "up"),
+    act("volume.down", ["volume down", "quieter", "turn [it] down", "lower [the] volume", "decrease [the] volume"], "down"),
+    act("volume.mute", ["mute", "mute [the] sound", "mute audio"], "mute"),
+    act("volume.unmute", ["unmute", "unmute [the] sound", "unmute audio"], "unmute"),
+    {
+      id: "volume.set",
+      phrases: ["[set] [the] volume to {level:number} [percent]", "volume {level:number} [percent]"],
+      label: (a) => `Volume ${a.level}%`,
+      run: async (ctx, a) => {
+        if (a.level > 100) return "Volume goes from 0 to 100";
+        return volumeAnswer(await ctx.volume({ op: "set", level: a.level }));
       },
     },
   ];

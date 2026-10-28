@@ -6092,6 +6092,7 @@ function commandContext() {
       return notes.at(-1);
     },
     musicControl: (action) => window.__TAURI__.core.invoke("music_control", { action }),
+    volume: (op) => window.__TAURI__.core.invoke("volume", { op }),
     showBoard: (name) => {
       const preset = presets.find((p) => p.name === name);
       if (preset) showBoard(preset);

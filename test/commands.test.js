@@ -29,6 +29,10 @@ function fakeCtx({ music = null, timer = false, last = null } = {}) {
     stopTimer: () => (calls.push(["stop"]), timer),
     addNote: (text) => (calls.push(["note", text]), text.trim() ? { text: text.trim().slice(0, 140) } : null),
     lastAnswer: () => last,
+    volume: async (op) => {
+      calls.push(["volume", op]);
+      return op.op === "mute" ? { percent: 40, muted: true } : { percent: op.level ?? 50, muted: false };
+    },
   };
 }
 
@@ -135,4 +139,14 @@ test("repeat and cancel", async () => {
   // "stop" alone cancels; with an object it is that object's action.
   assert.equal(match("stop the music", registry, lists).steps[0].action, "media.pause");
   assert.equal(match("stop the timer", registry, lists).steps[0].action, "timer.stop");
+});
+
+test("volume", async () => {
+  assert.deepEqual((await say("louder")).ctx.calls, [["volume", { op: "up" }]]);
+  assert.deepEqual((await say("turn it down")).ctx.calls, [["volume", { op: "down" }]]);
+  assert.equal((await say("mute")).text, "Muted, volume 40%");
+  const set = await say("set the volume to thirty percent");
+  assert.deepEqual(set.ctx.calls, [["volume", { op: "set", level: 30 }]]);
+  assert.equal(set.text, "Volume 30%");
+  assert.equal((await say("volume 150")).text, "Volume goes from 0 to 100");
 });

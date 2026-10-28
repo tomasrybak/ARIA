@@ -69,6 +69,11 @@ windows = { version = "0.62", features = [
     "Win32_System_Registry",           # Steam install path
     "Media_Control",                   # SMTC now-playing (WinRT)
     "Storage_Streams",                 # SMTC thumbnail stream (album art)
+    "Win32_Media_Audio",               # default output device (volume)
+    "Win32_Media_Audio_Endpoints",     # IAudioEndpointVolume
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage", # IMMDevice::Activate's signature
+    "Win32_System_Variant",
 ] }
 
 # Linux only: a tiny Wayland client for the screen-time tracker — cosmic-comp

@@ -2,6 +2,7 @@ mod collectors;
 mod terminal;
 mod palette;
 mod settings;
+mod system;
 mod wallpaper;
 mod window;
 
@@ -65,6 +66,7 @@ pub fn run() {
             window::display_server,
             window::place_on_monitor,
             palette::palette_open,
+            system::volume,
             collectors::history::history_report,
             settings::settings_export,
             settings::settings_open,
