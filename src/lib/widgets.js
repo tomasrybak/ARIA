@@ -62,6 +62,8 @@ export const WIDGETS = {
               cat: "daily", blurb: "Time zones and a pomodoro timer" },
   freegames:  { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true,
               cat: "media", blurb: "Games free to keep on Epic, Steam and GOG" },
+  steam:      { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true,
+              cat: "media", blurb: "Friends online, what they play and your recent games" },
   gpu:        { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true,
               cat: "system", blurb: "Load, VRAM, temperature, power and clocks" },
   thermals:   { sizes: { s: [3, 1], m: [3, 2], l: [6, 3] }, home: [1, 1, "m"], defaultHidden: true,

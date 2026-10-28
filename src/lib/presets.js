@@ -37,7 +37,7 @@ export const MAX_NAME = 24;
 export const BUILTIN_PRESETS = [
   {
     name: "Gaming",
-    version: 2,
+    version: 3,
     trigger: { kind: "game" },
     board: {
       gpu:        { c: 1, r: 1, size: "l", hidden: false },
@@ -47,12 +47,15 @@ export const BUILTIN_PRESETS = [
       music:      { c: 7, r: 4, size: "m", hidden: false },
       discord:    { c: 10, r: 4, size: "m", hidden: false },
       latency:    { c: 1, r: 6, size: "s", hidden: false },
-      crypto:     { c: 4, r: 6, size: "s", hidden: false },
+      // Version 3: STEAM took crypto's cell — who is playing matters mid-game,
+      // prices do not.
+      steam:      { c: 4, r: 6, size: "s", hidden: false },
       email:      { c: 7, r: 6, size: "s", hidden: false },
       github:     { c: 10, r: 6, size: "s", hidden: false },
       // The board is full at 72 cells, so the four M tiles cost the screen-time
       // headline: it is the one that reports on the session rather than to it.
       screentime: { c: 1, r: 1, size: "s", hidden: true },
+      crypto:     { c: 1, r: 1, size: "s", hidden: true },
       stag:       { c: 1, r: 1, size: "m", hidden: true },
       terminal:   { c: 7, r: 1, size: "m", hidden: true },
       calendar:   { c: 1, r: 1, size: "m", hidden: true },
@@ -87,6 +90,7 @@ export const BUILTIN_PRESETS = [
       weather:    { c: 1, r: 1, size: "m", hidden: true },
       clock:      { c: 1, r: 1, size: "m", hidden: true },
       freegames:  { c: 1, r: 1, size: "m", hidden: true },
+      steam:      { c: 1, r: 1, size: "m", hidden: true },
       gpu:        { c: 1, r: 1, size: "m", hidden: true },
       screentime: { c: 1, r: 1, size: "s", hidden: true },
       trends:     { c: 1, r: 1, size: "m", hidden: true },
@@ -105,6 +109,7 @@ export const BUILTIN_PRESETS = [
       weather:    { c: 1, r: 1, size: "m", hidden: true },
       clock:      { c: 1, r: 1, size: "m", hidden: true },
       freegames:  { c: 1, r: 1, size: "m", hidden: true },
+      steam:      { c: 1, r: 1, size: "m", hidden: true },
       notes:      { c: 10, r: 1, size: "m", hidden: false },
       email:      { c: 7, r: 3, size: "m", hidden: false },
       github:     { c: 10, r: 3, size: "m", hidden: false },

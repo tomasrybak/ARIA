@@ -43,6 +43,7 @@ import {
   zoneLabel,
 } from "./lib/clock.js";
 import { CYCLE_MS, STORES, cycleIndex, endingSoon, endsLabel, partition, startsLabel } from "./lib/freegames.js";
+import { currentGame, playtime, privacyHint, topPlaying } from "./lib/steam.js";
 import { MIN_DAYS, anomalies, coverage, fmtHours, trends, week } from "./lib/insights.js";
 import { whatMatters, noteSession } from "./lib/matters.js";
 import {
@@ -735,6 +736,160 @@ function renderFreeGames() {
   body.append(list, credit);
 }
 
+// ── steam ───────────────────────────────────────────────────
+// Friends and recent games from the Web API, plus the game running here,
+// which needs no key and so shows even while disconnected. Wording lives in
+// lib/steam.js.
+let steamData = null;
+let steamLastJson = null;
+const STEAM_PRESENCE = { online: "online", busy: "busy", away: "away" };
+
+function steamAvatar(src, cls) {
+  const img = document.createElement("img");
+  img.className = cls;
+  img.alt = "";
+  if (src) img.src = src;
+  else img.classList.add(`${cls}--empty`);
+  return img;
+}
+
+// The key field is a password field and is emptied once Steam accepts it;
+// it never comes back from the backend, so the form is always blank.
+function steamSetupForm(err, label, onDone) {
+  const form = document.createElement("div");
+  form.className = "auth-form";
+  const profile = authInput("profile link or SteamID64");
+  const key = authInput("Web API key (steamcommunity.com/dev/apikey)", "password");
+  key.autocomplete = "off";
+  form.append(
+    profile,
+    key,
+    authButton(label, async (b) => {
+      if (await invokeAuth(b, err, "steam_setup", { key: key.value, profile: profile.value })) {
+        key.value = "";
+        onDone?.();
+      }
+    }),
+  );
+  return form;
+}
+
+function steamFriendRow(f) {
+  const row = document.createElement("div");
+  row.className = "steam-friend";
+  row.title = f.game ? `${f.name} · ${f.game}` : f.name;
+  const text = document.createElement("div");
+  text.className = "steam-friend-text";
+  text.append(
+    wxSpan("steam-name", f.name),
+    f.game ? wxSpan("steam-game", f.game) : wxSpan(`steam-presence steam-presence--${f.presence}`, STEAM_PRESENCE[f.presence] ?? f.presence),
+  );
+  row.append(steamAvatar(f.avatar, "steam-avatar"), text);
+  return row;
+}
+
+function steamRecentRow(g) {
+  const row = document.createElement("div");
+  row.className = "steam-recent";
+  row.title = `${g.name} · ${playtime(g.minutes_total)} in total`;
+  row.append(steamAvatar(g.icon, "steam-icon"), wxSpan("steam-name", g.name), wxSpan("steam-hours", playtime(g.minutes_2weeks)));
+  return row;
+}
+
+function renderSteam() {
+  if (authPanelId === "steam") return;
+  const widget = document.getElementById("widget-steam");
+  if (!widget || !steamData) return;
+  const body = widget.querySelector(".widget-body");
+  const p = steamData;
+  const size = widget.dataset.size;
+  const game = currentGame(p);
+  body.replaceChildren();
+
+  if (p.status !== "connected") {
+    if (game) body.append(steamNow(game));
+    const err = wxSpan("disconnected", p.reason);
+    body.append(err);
+    // Two fields and a button do not fit one row; S points at M instead.
+    if (size === "s") err.textContent = `${p.reason} · connect at M size`;
+    else body.append(steamSetupForm(err, "CONNECT"));
+    return;
+  }
+
+  const hint = privacyHint(p.hidden);
+  const friendsHidden = (p.hidden ?? []).some((h) => h === "profile" || h === "friend_list");
+
+  if (size === "s") {
+    const row = document.createElement("div");
+    row.className = "steam-s";
+    const count = document.createElement("div");
+    count.className = "steam-count";
+    count.append(wxSpan("steam-count-n", friendsHidden ? "—" : String(p.online)), wxSpan("steam-count-label", "online"));
+    if (p.playing) count.append(wxSpan("steam-count-label steam-count-sub", `${p.playing} playing`));
+    row.append(count);
+    const top = topPlaying(p.friends);
+    if (game) row.append(steamHeadline("you're playing", game));
+    else if (top) row.append(steamHeadline(top.name, top.game));
+    else row.append(steamHeadline(friendsHidden ? "friends list private" : "nobody in a game", ""));
+    body.append(row);
+    return;
+  }
+
+  const head = document.createElement("div");
+  head.className = "steam-head";
+  const me = document.createElement("div");
+  me.className = "steam-me";
+  me.append(
+    steamAvatar(p.me.avatar, "steam-avatar"),
+    wxSpan("steam-name", p.me.name),
+    game ? wxSpan("steam-game", game) : wxSpan(`steam-presence steam-presence--${p.me.presence}`, STEAM_PRESENCE[p.me.presence] ?? "offline"),
+  );
+  head.append(me);
+  if (!friendsHidden) head.append(wxSpan("steam-counts", `${p.online} online · ${p.playing} playing`));
+  body.append(head);
+  if (hint) body.append(wxSpan("auth-note steam-hint", hint));
+
+  const friends = document.createElement("div");
+  friends.className = "steam-friends fill-list";
+  for (const f of p.friends) friends.append(steamFriendRow(f));
+  if (!p.friends.length && !friendsHidden) friends.append(wxSpan("fg-empty", "No friends online."));
+
+  if (size !== "l") {
+    body.append(friends);
+    return;
+  }
+  // L: friends left, the last two weeks right.
+  const cols = document.createElement("div");
+  cols.className = "steam-cols";
+  const left = document.createElement("div");
+  left.className = "stag-col";
+  left.append(wxSpan("stag-section", "FRIENDS"), friends);
+  const right = document.createElement("div");
+  right.className = "stag-col";
+  const recent = document.createElement("div");
+  recent.className = "steam-recent-list fill-list";
+  for (const g of p.recent) recent.append(steamRecentRow(g));
+  if (!p.recent.length && !(p.hidden ?? []).length) recent.append(wxSpan("fg-empty", "Nothing played lately."));
+  right.append(wxSpan("stag-section", "LAST 2 WEEKS"), recent);
+  cols.append(left, right);
+  body.append(cols);
+}
+
+function steamNow(game) {
+  const row = document.createElement("div");
+  row.className = "steam-s";
+  row.append(steamHeadline("you're playing", game));
+  return row;
+}
+
+function steamHeadline(label, title) {
+  const h = document.createElement("div");
+  h.className = "steam-headline";
+  h.append(wxSpan("steam-count-label", label));
+  if (title) h.append(wxSpan("steam-headline-title", title));
+  return h;
+}
+
 // ── clock ───────────────────────────────────────────────────
 // Local time, up to three other zones, and a timer/pomodoro; the rules are in
 // lib/clock.js. renderClock() builds the DOM when its shape changes and the
@@ -1388,6 +1543,7 @@ function closeAuthPanel() {
     calendar: renderCalendar,
     weather: renderWeather,
     clock: renderClock,
+    steam: renderSteam,
   })[id]?.();
 }
 
@@ -1569,6 +1725,16 @@ function openAuthPanel(id) {
     panel.append(note);
   } else if (id === "clock") {
     panel.append(clockZoneEditor(err));
+  } else if (id === "steam") {
+    const connected = steamData?.status === "connected";
+    if (connected) panel.append(wxSpan("auth-note", `now: ${steamData.me.name}`));
+    panel.append(steamSetupForm(err, connected ? "SAVE" : "CONNECT", closeAuthPanel));
+    if (connected) {
+      const out = logoutBtn("steam_logout");
+      out.classList.add("auth-danger");
+      const note = wxSpan("auth-note", "log out deletes the stored API key");
+      panel.append(out, note);
+    }
   } else if (id === "weather") {
     window.__TAURI__.core
       .invoke("weather_config")
@@ -3058,6 +3224,14 @@ async function initCollectors() {
     renderWeather();
   });
 
+  on("steam", (e) => {
+    const raw = JSON.stringify(e.payload);
+    if (raw === steamLastJson) return; // don't wipe the key form mid-typing
+    steamLastJson = raw;
+    steamData = e.payload;
+    renderSteam();
+  });
+
   on("freegames", (e) => {
     freeGamesData = e.payload;
     renderFreeGames();
@@ -3718,6 +3892,7 @@ function applyLayout() {
   renderWeather();
   renderClock();
   renderFreeGames();
+  renderSteam();
   renderGpu();
   renderThermals();
   renderPerf();
@@ -3865,9 +4040,9 @@ function initLayout() {
   const tray = document.getElementById("widget-tray");
 
   // Widgets with an account or settings get a gear that opens their panel.
-  const AUTH_WIDGETS = new Set(["discord", "github", "email", "stag", "calendar", "weather", "clock"]);
+  const AUTH_WIDGETS = new Set(["discord", "github", "email", "stag", "calendar", "weather", "clock", "steam"]);
   // Slow-polling collectors get a poll-now button.
-  const REFRESH_WIDGETS = { email: "email_refresh", github: "github_refresh", crypto: "crypto_refresh", stag: "stag_refresh", calendar: "cal_refresh", weather: "weather_refresh", freegames: "freegames_refresh" };
+  const REFRESH_WIDGETS = { email: "email_refresh", github: "github_refresh", crypto: "crypto_refresh", stag: "stag_refresh", calendar: "cal_refresh", weather: "weather_refresh", freegames: "freegames_refresh", steam: "steam_refresh" };
 
   for (const id of Object.keys(WIDGETS)) {
     const el = widgetEl(id);

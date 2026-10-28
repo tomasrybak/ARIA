@@ -4172,6 +4172,172 @@ body.dragging-widget .widget-tray {
   min-width: 0;
 }
 
+/* ── STEAM ──────────────────────────────────────────────────
+   People first: S is the online count beside what you (or the first friend
+   in a game) are playing, M the friend list, L adds the last two weeks.
+   Games in play take the accent; presence stays a dimmed word. */
+
+.steam-s {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 20px;
+  padding: 0 4px;
+  min-width: 0;
+}
+
+.widget--steam[data-size="s"] .widget-body {
+  justify-content: center;
+}
+
+.steam-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.steam-count-n {
+  font: 600 2.3rem/1 var(--font-display, system-ui), sans-serif;
+  color: var(--accent, var(--color-accent));
+}
+
+.steam-count-label {
+  font: 500 0.58rem/1.2 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.steam-count-sub {
+  margin-top: 3px;
+  opacity: 0.4;
+}
+
+.steam-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.steam-headline-title {
+  font: 600 0.95rem/1.25 "Inter", system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.steam-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.steam-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font: 600 0.8rem/1.3 "Inter", system-ui, sans-serif;
+}
+
+.steam-counts {
+  flex: none;
+  font: 500 0.6rem/1.2 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.steam-hint {
+  opacity: 0.75;
+}
+
+.steam-friends,
+.steam-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.steam-friend,
+.steam-recent {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.steam-friend-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.steam-avatar,
+.steam-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: rgba(127, 127, 127, 0.15);
+}
+
+.steam-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.steam-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 0.78rem/1.3 "Inter", system-ui, sans-serif;
+}
+
+.steam-game {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 0.66rem/1.3 "Inter", system-ui, sans-serif;
+  color: var(--accent, var(--color-accent));
+}
+
+.steam-presence {
+  font: 400 0.66rem/1.3 "Inter", system-ui, sans-serif;
+  opacity: 0.55;
+}
+
+.steam-presence--away,
+.steam-presence--offline {
+  opacity: 0.35;
+}
+
+.steam-recent .steam-name {
+  flex: 1 1 auto;
+}
+
+.steam-hours {
+  flex: none;
+  font: 500 0.62rem/1 "JetBrains Mono", ui-monospace, monospace;
+  opacity: 0.6;
+}
+
+/* L: friends and the last two weeks side by side. */
+.steam-cols {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 18px;
+}
+
 /* ── Linux/WebKitGTK transparency fix ───────────────────────
    On a transparent WebView, WebKitGTK paints backdrop-filter regions opaque
    black on repaint (hover, live updates), so glass panels flash black. The

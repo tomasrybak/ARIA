@@ -19,7 +19,7 @@ export const PURPOSES = [
     key: "gaming",
     label: "Gaming",
     builtin: "Gaming",
-    picks: ["gpu", "perf", "thermals", "hardware", "discord", "music", "latency", "freegames"],
+    picks: ["gpu", "perf", "thermals", "hardware", "discord", "music", "steam", "latency", "freegames"],
   },
   {
     key: "coding",
