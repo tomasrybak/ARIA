@@ -20,6 +20,11 @@ tauri-plugin-opener = "2"
 tauri-plugin-autostart = "2"
 # Native file picker for the custom wallpaper (see src/wallpaper.rs).
 tauri-plugin-dialog = "2"
+# Command bar hotkey (macOS, Windows, X11) and `aria --command` for Wayland,
+# where apps get no global hotkeys (see src/palette.rs). Held at the last
+# releases that build on tauri 2.11; newer ones pull a tauri upgrade along.
+tauri-plugin-global-shortcut = "~2.3"
+tauri-plugin-single-instance = "~2.4"
 # Loopback-only media server for video wallpapers. WebKitGTK's media player
 # cannot load wry's custom `asset:` scheme and mis-plays blob: URLs (readyState
 # 4, currentTime frozen at 0); it works over HTTP with byte ranges, which is

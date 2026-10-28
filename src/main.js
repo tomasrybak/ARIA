@@ -76,6 +76,8 @@ import {
   toggleNote,
 } from "./lib/notes.js";
 import { PURPOSES, generateBoard } from "./lib/boardgen.js";
+import { runSteps } from "./lib/actions.js";
+import { createRegistry, suggest } from "./lib/commands.js";
 import {
   BUILTIN_PRESETS,
   MAX_NAME,
@@ -6010,6 +6012,42 @@ function initSettingsMenu() {
 }
 
 
+/* ── command bar ────────────────────────────────────────────
+   The palette window (palette.js) is only a view: it sends typed text here,
+   where the registry and every collector's latest data live, and shows what
+   comes back. Name lists for the matcher are built per query, so they always
+   follow the current data. */
+
+const commands = createRegistry();
+
+function commandLists() {
+  return {};
+}
+
+function commandContext() {
+  return { registry: commands };
+}
+
+function initCommands() {
+  const { emitTo, listen } = window.__TAURI__.event;
+  listen("palette-query", ({ payload }) => {
+    const out = suggest(commands, payload.text, commandLists());
+    emitTo("palette", "palette-result", { id: payload.id, ...out, items: out.items.map((i) => ({ label: i.label })) });
+  });
+  listen("palette-run", async ({ payload }) => {
+    const { items } = suggest(commands, payload.text, commandLists());
+    const chosen = items[payload.index] ?? items[0];
+    if (!chosen) {
+      emitTo("palette", "palette-answer", { id: payload.id, text: "Didn't catch that.", error: false });
+      return;
+    }
+    const answers = await runSteps(commands, chosen.steps, commandContext());
+    const failed = answers.find((a) => a.error);
+    const text = (failed ?? answers.at(-1))?.text ?? "";
+    emitTo("palette", "palette-answer", { id: payload.id, text, error: Boolean(failed) });
+  });
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   restoreWindowState(); // async, fire-and-forget: reposition ASAP
   updateClock();
@@ -6059,6 +6097,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initTelemetry();
   initTrends(); // reads the record on disk, so it polls rather than listens
   initMatters(); // after the widgets exist: its items link to them
+  initCommands();
   await initCollectors();
   // All listeners are now registered; let gated collectors start emitting.
   window.__TAURI__.core.invoke("frontend_ready");

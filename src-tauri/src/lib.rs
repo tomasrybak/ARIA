@@ -1,5 +1,6 @@
 mod collectors;
 mod terminal;
+mod palette;
 mod settings;
 mod wallpaper;
 mod window;
@@ -26,8 +27,18 @@ pub fn run() {
         set_default("__NV_DISABLE_EXPLICIT_SYNC", "1");
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // A second launch hands its arguments (`--command`) to the running ARIA
+    // and exits. Release builds only: dev and installed share the bundle
+    // identifier, so in dev it would poke the installed app instead of running.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        palette::handle_args(app, &args);
+    }));
+
+    builder
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -45,6 +56,7 @@ pub fn run() {
             wallpaper::init(app.handle());
             terminal::init(app.handle());
             collectors::spawn_all(app.handle());
+            palette::init(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
