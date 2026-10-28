@@ -64,6 +64,7 @@ pub fn run() {
             window::desktop_background,
             window::display_server,
             window::place_on_monitor,
+            palette::palette_open,
             collectors::history::history_report,
             settings::settings_export,
             settings::settings_open,

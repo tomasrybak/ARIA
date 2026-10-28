@@ -6030,6 +6030,15 @@ function commandContext() {
 
 function initCommands() {
   const { emitTo, listen } = window.__TAURI__.event;
+  const btn = document.getElementById("palette-btn");
+  btn.addEventListener("click", () => {
+    window.__TAURI__.core.invoke("palette_open").catch((e) => console.error("palette_open failed:", e));
+  });
+  if (IS_MAC) btn.title = "Command bar (⌘⌥K)";
+  // Wayland gives apps no global hotkeys; the hint names the way that works.
+  window.__TAURI__.core.invoke("display_server").then((server) => {
+    if (server === "wayland") btn.title = "Command bar (bind `aria --command` to a shortcut)";
+  }).catch(() => {});
   listen("palette-query", ({ payload }) => {
     const out = suggest(commands, payload.text, commandLists());
     emitTo("palette", "palette-result", { id: payload.id, ...out, items: out.items.map((i) => ({ label: i.label })) });

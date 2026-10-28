@@ -43,6 +43,13 @@ pub fn handle_args(app: &AppHandle, args: &[String]) {
     }
 }
 
+/// The HUD's own command bar button: the only way in on a Wayland session
+/// before the user has bound `aria --command` to a shortcut.
+#[tauri::command]
+pub fn palette_open(app: AppHandle) {
+    show(&app);
+}
+
 fn wants_palette(args: &[String]) -> bool {
     args.iter().skip(1).any(|a| a == COMMAND_ARG)
 }
