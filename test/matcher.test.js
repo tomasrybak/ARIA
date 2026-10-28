@@ -8,6 +8,7 @@ import {
   normalize,
   parseDuration,
   parseTemplate,
+  tokenize,
 } from "../src/lib/matcher.js";
 
 const noop = () => {};
@@ -93,10 +94,20 @@ test("optional words and misheard words still match", () => {
   assert.equal(run("ten minute timer").steps[0].args.length, 600);
 });
 
-test("text slots keep the rest of the sentence", () => {
-  const out = run("note: email the teacher about the exam");
+test("text slots keep the user's own words, case and punctuation", () => {
+  const out = run("Note: Email Pavel about the exam, tomorrow!");
   assert.equal(out.steps[0].action, "note.add");
-  assert.equal(out.steps[0].args.body, "email the teacher about the exam");
+  assert.equal(out.steps[0].args.body, "Email Pavel about the exam, tomorrow");
+  // Filler around the command is not part of the text.
+  assert.equal(run("Hey Aria, note buy milk please").steps[0].args.body, "buy milk");
+  // Number words are read as numbers for matching, but the text stays as said.
+  assert.equal(run("note call twenty five people").steps[0].args.body, "call twenty five people");
+});
+
+test("tokens keep their place in the original text", () => {
+  const words = tokenize("Hey Aria, set timer for twenty five mins");
+  assert.deepEqual(words.map((w) => w.t), ["set", "timer", "for", "25", "mins"]);
+  assert.equal("Hey Aria, set timer for twenty five mins".slice(words[3].from, words[3].to), "twenty five");
 });
 
 test("compound commands split on and/then only when every part is a command", () => {

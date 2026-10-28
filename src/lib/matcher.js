@@ -22,48 +22,76 @@ const BARE_FACTOR = 0.95;
 // A misheard word still counts as the word if it is this close.
 const WORD_SIMILARITY = 0.8;
 
-const LEADING_FILLER = /^(hey |ok |okay )?(aria |please |can you |could you |would you )+/;
-const TRAILING_FILLER = / (please|for me|thanks|thank you)$/;
+const GREETINGS = new Set(["hey", "ok", "okay"]);
+const LEADING_FILLER = [["aria"], ["please"], ["can", "you"], ["could", "you"], ["would", "you"]];
+const TRAILING_FILLER = [["please"], ["for", "me"], ["thanks"], ["thank", "you"]];
 
 const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
   "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
 
-/** Lowercase, no diacritics or punctuation, number words as digits, filler dropped. */
-export function normalize(text) {
-  let s = String(text)
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[’']/g, "")
-    .replace(/(?<=\d)\.(?=\d)/g, "\u0000")
-    .replace(/[^a-z0-9\u0000]+/g, " ")
-    .replace(/\u0000/g, ".")
-    .trim();
-  s = numberWords(s);
-  let prev;
-  do {
-    prev = s;
-    s = s.replace(LEADING_FILLER, "").replace(TRAILING_FILLER, "").trim();
-  } while (s !== prev);
-  return s;
+/**
+ * Normalized words, each with the span of the original text it came from, so
+ * a free-text slot can hand back exactly what the user typed or said.
+ * Lowercase, no diacritics or punctuation, number words as digits, filler
+ * ("hey aria, could you … please") dropped.
+ */
+export function tokenize(text) {
+  const source = String(text);
+  const words = [];
+  for (const m of source.matchAll(/[\p{L}\p{N}]+(?:['’.][\p{L}\p{N}]+)*/gu)) {
+    const span = { from: m.index, to: m.index + m[0].length };
+    const plain = m[0].normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/['’]/g, "");
+    // A dot survives only inside a number ("1.5").
+    for (const t of plain.replace(/(?<!\d)\.|\.(?!\d)/g, " ").split(" ")) if (t) words.push({ t, ...span });
+  }
+  return dropFiller(numberWords(words));
 }
 
-function numberWords(s) {
+/** The normalized text of `tokenize`, as one string. */
+export function normalize(text) {
+  return tokenize(text).map((w) => w.t).join(" ");
+}
+
+function numberWords(words) {
   const out = [];
-  const words = s.split(" ");
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
-    if (w in TENS) {
-      const unit = SMALL.indexOf(words[i + 1]);
-      if (unit > 0 && unit < 10) {
-        out.push(String(TENS[w] + unit));
-        i++;
-      } else out.push(String(TENS[w]));
-    } else if (SMALL.includes(w)) out.push(String(SMALL.indexOf(w)));
+    const unit = SMALL.indexOf(words[i + 1]?.t);
+    if (w.t in TENS && unit > 0 && unit < 10) {
+      out.push({ t: String(TENS[w.t] + unit), from: w.from, to: words[i + 1].to });
+      i++;
+    } else if (w.t in TENS) out.push({ ...w, t: String(TENS[w.t]) });
+    else if (SMALL.includes(w.t)) out.push({ ...w, t: String(SMALL.indexOf(w.t)) });
     else out.push(w);
   }
-  return out.join(" ");
+  return out;
+}
+
+function dropFiller(words) {
+  const at = (seq, i) => seq.every((t, k) => words[i + k]?.t === t);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    // A greeting goes only together with filler: "ok" alone may be the command.
+    if (GREETINGS.has(words[0]?.t) && LEADING_FILLER.some((seq) => at(seq, 1))) {
+      words = words.slice(1);
+      changed = true;
+    }
+    for (const seq of LEADING_FILLER) {
+      if (words.length > seq.length && at(seq, 0)) {
+        words = words.slice(seq.length);
+        changed = true;
+      }
+    }
+    for (const seq of TRAILING_FILLER) {
+      if (words.length > seq.length && at(seq, words.length - seq.length)) {
+        words = words.slice(0, -seq.length);
+        changed = true;
+      }
+    }
+  }
+  return words;
 }
 
 const UNITS = [
@@ -199,10 +227,13 @@ export function parseTemplate(phrase) {
     });
 }
 
-/** Resolutions of one slot, each `{ value, score }`; none means the words don't fit. */
-function resolveSlot(type, words, lists) {
+/**
+ * Resolutions of one slot, each `{ value, score }`; none means the words don't
+ * fit. `raw` is the original text under the slot, which a text slot keeps.
+ */
+function resolveSlot(type, words, raw, lists) {
   const text = words.join(" ");
-  if (type === "text") return [{ value: text, score: 1 }];
+  if (type === "text") return [{ value: raw, score: 1 }];
   if (type === "duration") {
     const secs = parseDuration(text);
     return secs ? [{ value: secs, score: 1 }] : [];
@@ -227,7 +258,7 @@ function wordScore(want, got) {
  * Every way `parts` can consume all of `tokens`. Score = average of the plain
  * words × the weakest slot, so one poorly matched name sinks the whole reading.
  */
-function readings(parts, tokens, lists) {
+function readings(parts, tokens, raw, lists) {
   const out = [];
   const walk = (pi, ti, words, slotMin, args) => {
     if (pi === parts.length) {
@@ -239,9 +270,10 @@ function readings(parts, tokens, lists) {
     }
     const p = parts[pi];
     if (p.slot) {
+      if (ti === tokens.length) return; // a slot never matches nothing
       const last = pi === parts.length - 1;
       for (let end = last ? tokens.length : ti + 1; end <= tokens.length; end++) {
-        for (const r of resolveSlot(p.type, tokens.slice(ti, end), lists)) {
+        for (const r of resolveSlot(p.type, tokens.slice(ti, end), raw(ti, end), lists)) {
           walk(pi + 1, end, words, Math.min(slotMin, r.score), { ...args, [p.slot]: r.value });
         }
       }
@@ -259,11 +291,16 @@ function readings(parts, tokens, lists) {
 
 /** All candidate readings of one command, best first, each `{ action, args, score }`. */
 export function candidates(text, registry, lists = {}) {
-  const tokens = normalize(text).split(" ").filter(Boolean);
+  return readWords(tokenize(text), String(text), registry, lists);
+}
+
+function readWords(words, source, registry, lists) {
+  const tokens = words.map((w) => w.t);
   if (!tokens.length) return [];
+  const raw = (from, to) => source.slice(words[from].from, words[to - 1].to);
   const out = [];
   for (const { action, parts } of registry.templates) {
-    for (const r of readings(parts, tokens, lists)) out.push({ action: action.id, args: r.args, score: r.score });
+    for (const r of readings(parts, tokens, raw, lists)) out.push({ action: action.id, args: r.args, score: r.score });
   }
   for (const action of registry.actions) {
     if (!action.bare || !lists[action.bare.type]) continue;
@@ -302,16 +339,17 @@ function clearWinner(list) {
  * a confident command on its own, so a name like "Rock and Stone" stays whole.
  */
 export function match(text, registry, lists = {}) {
-  const whole = candidates(text, registry, lists);
+  const source = String(text);
+  const words = tokenize(source);
+  const whole = readWords(words, source, registry, lists);
   const winner = clearWinner(whole);
   if (winner) return { kind: "run", steps: [winner] };
 
-  const tokens = normalize(text).split(" ");
-  if (tokens.some((t) => JOINERS.has(t))) {
+  if (words.some((w) => JOINERS.has(w.t))) {
     const parts = [[]];
-    for (const t of tokens) JOINERS.has(t) ? parts.push([]) : parts.at(-1).push(t);
+    for (const w of words) JOINERS.has(w.t) ? parts.push([]) : parts.at(-1).push(w);
     if (parts.every((p) => p.length)) {
-      const steps = parts.map((p) => clearWinner(candidates(p.join(" "), registry, lists)));
+      const steps = parts.map((p) => clearWinner(readWords(p, source, registry, lists)));
       if (steps.every(Boolean)) return { kind: "run", steps };
     }
   }
