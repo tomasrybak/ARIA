@@ -9,7 +9,7 @@
 //! It is created on first use and then only hidden, so users who never open it
 //! don't pay for a second webview, and later opens are instant.
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 const LABEL: &str = "palette";
 /// Cmd+Option+K on macOS. Plain Ctrl+K would take Discord's quick switcher,
@@ -74,17 +74,42 @@ fn show(app: &AppHandle) {
             }
         },
     };
-    let _ = window.center();
+    if crate::window::display_server() != "wayland" {
+        center_on_hud(app, &window);
+    }
     let _ = window.show();
     let _ = window.set_focus();
     use tauri::Emitter;
     let _ = window.emit_to(LABEL, "palette-open", ());
 }
 
+/// Centre on the monitor the HUD is on, a third of the way down (the list
+/// grows downwards). Wayland ignores positions; see `build` for that path.
+fn center_on_hud(app: &AppHandle, window: &WebviewWindow) {
+    let monitor = app.get_webview_window("main").and_then(|m| m.current_monitor().ok().flatten());
+    let (Some(monitor), Ok(size)) = (monitor, window.outer_size()) else {
+        let _ = window.center();
+        return;
+    };
+    let area = monitor.work_area();
+    let x = area.position.x + (area.size.width as i32 - size.width as i32) / 2;
+    let y = area.position.y + (area.size.height as i32 - size.height as i32) / 3;
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+}
+
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     // Opaque on purpose: transparent WebKitGTK windows on NVIDIA paint damaged
     // regions black (see the Linux workaround notes in window.rs).
-    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("palette.html".into()))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("palette.html".into()));
+    // Wayland lets no app place its windows. A dialog of the HUD is placed by
+    // the compositor over its parent, and the HUD fills its monitor. Only
+    // there: on macOS a child window would share the HUD's desktop level.
+    #[cfg(target_os = "linux")]
+    let builder = match app.get_webview_window("main") {
+        Some(main) if crate::window::display_server() == "wayland" => builder.transient_for(&main)?,
+        _ => builder,
+    };
+    let window = builder
         .title("ARIA")
         .inner_size(WIDTH, HEIGHT)
         // Borderless, so nothing to drag; and a non-resizable GTK window
@@ -95,6 +120,13 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .skip_taskbar(true)
         .visible(false)
         .build()?;
+    #[cfg(target_os = "linux")]
+    if crate::window::display_server() == "wayland" {
+        use gtk::prelude::GtkWindowExt;
+        if let Ok(gtk_window) = window.gtk_window() {
+            gtk_window.set_type_hint(gtk::gdk::WindowTypeHint::Dialog);
+        }
+    }
     let w = window.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::Focused(false) = event {
