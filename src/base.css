@@ -346,21 +346,13 @@
 }
 
 /* Where a strip item sends you. Brief, and only ever on the widget you
-   asked for — the board is a fixed grid with nothing to scroll to. */
-@keyframes widget-jumped {
-  0%, 100% { box-shadow: none; }
-  15%, 60% { box-shadow: 0 0 0 2px var(--accent, var(--color-accent, #e8ac53)); }
-}
-
+   asked for — the board is a fixed grid with nothing to scroll to. An
+   outline rather than an animation: every theme animates .widget's entrance,
+   and replacing that animation replays it, so the widget would vanish and
+   rise again. */
 .widget.jumped {
-  animation: widget-jumped 1.6s ease-in-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .widget.jumped {
-    animation: none;
-    box-shadow: 0 0 0 2px var(--accent, var(--color-accent, #e8ac53));
-  }
+  outline: 2px solid var(--accent, var(--color-accent, #e8ac53));
+  outline-offset: -1px;
 }
 
 /* Feedback for a command from the bar or voice: the board's edge lights up
