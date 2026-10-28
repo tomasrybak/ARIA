@@ -4273,7 +4273,26 @@ body.dragging-widget .widget-tray {
 .steam-friend-text {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
+}
+
+.steam-star {
+  flex: none;
+  padding: 0 2px;
+  font-size: 0.8rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.steam-friend:hover .steam-star:not(.steam-star--on) {
+  opacity: 0.5;
+}
+
+.steam-friend .steam-star:hover,
+.steam-star--on {
+  opacity: 0.9;
+  color: var(--accent, var(--color-accent));
 }
 
 .steam-avatar,
@@ -4335,7 +4354,8 @@ body.dragging-widget .widget-tray {
   gap: 5px;
 }
 
-.steam-sale {
+.steam-sale,
+.steam-friend {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4352,7 +4372,8 @@ body.dragging-widget .widget-tray {
   transition: background 0.15s;
 }
 
-.steam-sale:hover {
+.steam-sale:hover,
+.steam-friend:hover {
   background: rgba(127, 127, 127, 0.1);
 }
 

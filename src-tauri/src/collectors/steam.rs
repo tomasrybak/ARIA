@@ -44,6 +44,10 @@ struct SteamConfig {
     /// location is free text people fill in for fun.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     country: Option<String>,
+    /// SteamIDs pinned in the widget. Steam keeps its own favorites in the
+    /// client, out of the Web API's reach.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    favorites: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -54,7 +58,7 @@ enum SteamState {
     },
     Connected {
         me: Player,
-        /// Online friends, the ones in a game first, at most `FRIENDS_SHOWN`.
+        /// Favorites (offline too) and online friends, at most `FRIENDS_SHOWN`.
         friends: Vec<Player>,
         online: usize,
         playing: usize,
@@ -106,6 +110,7 @@ struct Player {
     avatar_url: Option<String>,
     #[serde(skip)]
     public: bool,
+    favorite: bool,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -183,7 +188,7 @@ pub fn spawn(app: AppHandle, mut ready: tokio::sync::watch::Receiver<bool>) {
                     SteamState::Disconnected { reason }
                 }
                 Ok(_) if throttle.active() => last_or_disconnected(&last_ok, "rate limited"),
-                Ok((key, SteamConfig { steamid, country })) => {
+                Ok((key, SteamConfig { steamid, country, favorites })) => {
                     if cache.steamid != steamid {
                         cache = Cache { steamid: steamid.clone(), ..Cache::default() };
                         last_ok = None;
@@ -193,7 +198,7 @@ pub fn spawn(app: AppHandle, mut ready: tokio::sync::watch::Receiver<bool>) {
                         cache.sales.clear();
                         cache.sales_next = None;
                     }
-                    match poll(&client, &images, &key, &steamid, &mut cache).await {
+                    match poll(&client, &images, &key, &steamid, &favorites, &mut cache).await {
                         Ok(s) => {
                             throttle.ok();
                             last_ok = Some(s.clone());
@@ -233,7 +238,14 @@ fn credentials(app: &AppHandle) -> Result<(String, SteamConfig), String> {
     Ok((key, load_config(app)?))
 }
 
-async fn poll(client: &reqwest::Client, images: &reqwest::Client, key: &str, steamid: &str, cache: &mut Cache) -> Result<SteamState, ApiError> {
+async fn poll(
+    client: &reqwest::Client,
+    images: &reqwest::Client,
+    key: &str,
+    steamid: &str,
+    favorites: &[String],
+    cache: &mut Cache,
+) -> Result<SteamState, ApiError> {
     let mut hidden = Vec::new();
     let friend_ids = match call(client, "ISteamUser/GetFriendList/v1", key, &[("steamid", steamid), ("relationship", "friend")]).await {
         Ok(v) => parse_friend_ids(&v),
@@ -260,7 +272,7 @@ async fn poll(client: &reqwest::Client, images: &reqwest::Client, key: &str, ste
     if !me.public {
         hidden.insert(0, Hidden::Profile);
     }
-    let (mut friends, online, playing) = rank_friends(players);
+    let (mut friends, online, playing) = rank_friends(players, favorites);
 
     let due = cache.recent_at.is_none_or(|t| t.elapsed() >= RECENT_EVERY);
     if due {
@@ -402,19 +414,26 @@ fn parse_players(v: &Value) -> Vec<Player> {
                 avatar_url: p["avatarmedium"].as_str().map(str::to_string),
                 // 3 is "public"; 1 is private or friends-only.
                 public: p["communityvisibilitystate"].as_u64() == Some(3),
+                favorite: false,
             })
         })
         .collect()
 }
 
-/// Online friends, the ones in a game first, then by presence and name; plus
-/// how many are online and how many are playing.
-fn rank_friends(players: Vec<Player>) -> (Vec<Player>, usize, usize) {
-    let mut online: Vec<Player> = players.into_iter().filter(|p| p.presence != Presence::Offline).collect();
-    online.sort_by_key(|p| (p.game.is_none(), p.presence, p.name.to_lowercase()));
-    let (count, playing) = (online.len(), online.iter().filter(|p| p.game.is_some()).count());
-    online.truncate(FRIENDS_SHOWN);
-    (online, count, playing)
+/// Favorites first, offline ones included, then online friends; within each,
+/// the ones in a game first, then by presence and name. Plus how many are
+/// online and how many are playing.
+fn rank_friends(players: Vec<Player>, favorites: &[String]) -> (Vec<Player>, usize, usize) {
+    let mut shown: Vec<Player> = players
+        .into_iter()
+        .map(|p| Player { favorite: favorites.contains(&p.steamid), ..p })
+        .filter(|p| p.favorite || p.presence != Presence::Offline)
+        .collect();
+    shown.sort_by_key(|p| (!p.favorite, p.game.is_none(), p.presence, p.name.to_lowercase()));
+    let online = shown.iter().filter(|p| p.presence != Presence::Offline);
+    let (count, playing) = (online.clone().count(), online.filter(|p| p.game.is_some()).count());
+    shown.truncate(FRIENDS_SHOWN);
+    (shown, count, playing)
 }
 
 /// `None` when game details are private: Steam then answers with an empty
@@ -626,9 +645,12 @@ pub async fn steam_setup(app: AppHandle, key: String, profile: String) -> Result
         }
     };
     super::store_secret("steam", &key)?;
-    // A new key or profile keeps the store country already chosen.
-    let country = load_config(&app).ok().and_then(|c| c.country);
-    save_config(&app, &SteamConfig { steamid, country })?;
+    // A new key or profile keeps the store country and favorites.
+    let cfg = match load_config(&app) {
+        Ok(old) => SteamConfig { steamid, ..old },
+        Err(_) => SteamConfig { steamid, country: None, favorites: Vec::new() },
+    };
+    save_config(&app, &cfg)?;
     REFRESH.notify_one();
     Ok(())
 }
@@ -659,6 +681,18 @@ pub fn steam_store_country(app: AppHandle) -> Option<String> {
 pub fn steam_set_store_country(app: AppHandle, country: String) -> Result<(), String> {
     let mut cfg = load_config(&app)?;
     cfg.country = parse_country(&country)?;
+    save_config(&app, &cfg)?;
+    REFRESH.notify_one();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn steam_set_favorite(app: AppHandle, steamid: String, favorite: bool) -> Result<(), String> {
+    let mut cfg = load_config(&app)?;
+    cfg.favorites.retain(|id| *id != steamid);
+    if favorite {
+        cfg.favorites.push(steamid);
+    }
     save_config(&app, &cfg)?;
     REFRESH.notify_one();
     Ok(())
@@ -737,7 +771,7 @@ mod tests {
     fn friends_in_a_game_come_first_and_offline_ones_are_counted_out() {
         let mut players = parse_players(&fixture("players"));
         players.retain(|p| p.steamid != ME);
-        let (friends, online, playing) = rank_friends(players);
+        let (friends, online, playing) = rank_friends(players, &[]);
         assert_eq!((online, playing), (3, 1));
         assert_eq!(friends[0].game.as_deref(), Some("Counter-Strike 2"));
         assert!(friends.iter().all(|f| f.presence != Presence::Offline));
@@ -756,10 +790,23 @@ mod tests {
             avatar: None,
             avatar_url: None,
             public: true,
+            favorite: false,
         };
-        let (friends, online, _) = rank_friends((0..30).map(p).collect());
+        let (friends, online, _) = rank_friends((0..30).map(p).collect(), &[]);
         assert_eq!(friends.len(), FRIENDS_SHOWN);
         assert_eq!(online, 30);
+    }
+
+    #[test]
+    fn favorites_come_first_even_offline_and_do_not_count_as_online() {
+        let mut players = parse_players(&fixture("players"));
+        players.retain(|p| p.steamid != ME);
+        let (friends, online, playing) = rank_friends(players, &["76561198000000004".into()]);
+        assert_eq!((online, playing), (3, 1));
+        assert_eq!(friends[0].steamid, "76561198000000004");
+        assert!(friends[0].favorite);
+        assert_eq!(friends[0].presence, Presence::Offline);
+        assert_eq!(friends[1].game.as_deref(), Some("Counter-Strike 2"));
     }
 
     #[test]

@@ -792,16 +792,28 @@ function steamCountryForm(err) {
 }
 
 function steamFriendRow(f) {
-  const row = document.createElement("div");
+  const row = document.createElement("button");
   row.className = "steam-friend";
-  row.title = f.game ? `${f.name} · ${f.game}` : f.name;
+  row.title = `${f.game ? `${f.name} · ${f.game}` : f.name} · click to chat`;
+  row.addEventListener("click", () => openLink(`steam://friends/message/${f.steamid}`));
   const text = document.createElement("div");
   text.className = "steam-friend-text";
   text.append(
     wxSpan("steam-name", f.name),
     f.game ? wxSpan("steam-game", f.game) : wxSpan(`steam-presence steam-presence--${f.presence}`, STEAM_PRESENCE[f.presence] ?? f.presence),
   );
-  row.append(steamAvatar(f.avatar, "steam-avatar"), text);
+  // A span, not a button: a button inside the row's button is invalid HTML.
+  const star = wxSpan(`steam-star${f.favorite ? " steam-star--on" : ""}`, f.favorite ? "★" : "☆");
+  star.title = f.favorite ? "unpin" : "pin to the top";
+  star.addEventListener("click", (e) => {
+    e.stopPropagation();
+    f.favorite = !f.favorite;
+    renderSteam();
+    window.__TAURI__.core
+      .invoke("steam_set_favorite", { steamid: f.steamid, favorite: f.favorite })
+      .catch((err) => console.error("steam favorite:", err));
+  });
+  row.append(steamAvatar(f.avatar, "steam-avatar"), text, star);
   return row;
 }
 

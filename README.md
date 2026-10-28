@@ -268,7 +268,9 @@ The game running on this machine shows without any setup. For friends, recent ga
 2. In Steam → your profile → **Edit Profile → Privacy Settings**, set **My profile**, **Friends List** and **Game details** to **Public**. The widget says which one is missing if it cannot see something.
 3. Paste your profile link (or SteamID64) and the key into the STEAM widget at size M.
 
-The key goes to the credential store and is checked with Steam before it is saved; only the SteamID and the store country are written to `steam.json`. Sale prices follow your location unless you set a store country (e.g. `CZ`) in the widget's settings; Steam does not tell the API which store your account buys in. ARIA is not affiliated with Valve; Steam data is used through the [Steam Web API](https://steamcommunity.com/dev).
+Click a friend to open your chat with them in Steam. The ☆ that appears on hover pins a friend to the top of the list, and a pinned friend stays listed (greyed) while offline. Steam's own favorites live in its client, where the Web API cannot see them.
+
+The key goes to the credential store and is checked with Steam before it is saved; only the SteamID, the store country and your pinned friends are written to `steam.json`. Sale prices follow your location unless you set a store country (e.g. `CZ`) in the widget's settings; Steam does not tell the API which store your account buys in. ARIA is not affiliated with Valve; Steam data is used through the [Steam Web API](https://steamcommunity.com/dev).
 
 ## Files
 
@@ -276,7 +278,7 @@ The key goes to the credential store and is checked with Steam before it is save
 |---|---|---|
 | `mail.json` | app config dir¹ | mail accounts (managed by the widget, hand-editable) |
 | `weather.json` | app config dir¹ | the chosen place and units |
-| `steam.json` | app config dir¹ | your SteamID and store country (the API key is in the credential store) |
+| `steam.json` | app config dir¹ | your SteamID, store country and pinned friends (the API key is in the credential store) |
 | `discord.json` | app config dir¹ | server IDs + friends list (managed by the widget, hand-editable) |
 | `discord-popularity.json` | app data dir¹ | per-channel person-minute tallies |
 | `screentime/` | app data dir¹ | daily usage JSONs |
