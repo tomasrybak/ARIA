@@ -314,14 +314,9 @@
   display: block;
 }
 
-/* The dots give the slot up while the strip has something to say, and take
-   it back on hover — the connection state is still one gesture away. */
-.statusbar.has-matters:not(:hover) .status-item {
-  display: none;
-}
-
-.statusbar.has-matters:hover .matters,
-.statusbar.has-matters:hover .matters-more {
+/* The dots give the slot up while the strip has something to say. A lost
+   connection is itself something that matters, so they hide nothing. */
+.statusbar.has-matters .status-item {
   display: none;
 }
 

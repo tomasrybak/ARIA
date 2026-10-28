@@ -1030,6 +1030,4 @@ body.interactive .widget {
   align-items: baseline;
   gap: 10px;
 }
-.statusbar.has-matters:hover .matters { display: block; }
-.statusbar.has-matters:hover .matters-more:not(:empty) { display: inline; }
 .theme-menu { font-family: "Rajdhani", sans-serif; }
