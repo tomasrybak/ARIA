@@ -111,7 +111,17 @@
               <button id="fill-toggle">Fill screen</button>
               <button id="autostart-toggle">Start at login</button>
               <button id="wallpaper-btn">Wallpaper…</button>
+              <button id="links-btn">Saved links…</button>
               <button id="settings-btn">Export / import…</button>
+            </div>
+            <div class="theme-menu wallpaper-panel settings-panel links-panel" id="links-panel" hidden>
+              <div class="set-head">Saved links</div>
+              <div class="set-note">Open them from the command bar: "open notes", or just "notes".</div>
+              <div class="links-list" id="links-list"></div>
+              <input type="text" id="links-name" placeholder="name, e.g. notes" autocomplete="off" />
+              <input type="text" id="links-url" placeholder="address, e.g. stag.zcu.cz" autocomplete="off" />
+              <button class="set-action" id="links-add">Add link</button>
+              <div class="wp-error" id="links-error" hidden></div>
             </div>
             <div class="theme-menu wallpaper-panel" id="wallpaper-panel" hidden>
               <div class="wp-row">

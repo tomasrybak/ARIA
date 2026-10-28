@@ -217,6 +217,47 @@
   color: #fff;
 }
 
+.settings-panel input[type="text"] {
+  padding: 6px 8px;
+  font: 400 0.78rem/1.2 "Inter", system-ui, sans-serif;
+  color: #e6e8ec;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+
+.links-list:empty {
+  display: none;
+}
+
+.link-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.link-name {
+  font: 500 0.78rem/1.2 "Inter", system-ui, sans-serif;
+  color: #e6e8ec;
+}
+
+.settings-panel button.link-remove {
+  padding: 0 6px;
+  background: none;
+  opacity: 0.6;
+}
+
+.settings-panel button.link-remove::before,
+.settings-panel button.link-remove::after {
+  content: none;
+}
+
+.settings-panel button.link-remove:hover {
+  opacity: 1;
+}
+
 .set-step {
   display: flex;
   flex-direction: column;

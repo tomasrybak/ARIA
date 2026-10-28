@@ -78,6 +78,7 @@ import {
 import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { createRegistry, suggest } from "./lib/commands.js";
+import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
 import {
   BUILTIN_PRESETS,
   MAX_NAME,
@@ -6019,13 +6020,116 @@ function initSettingsMenu() {
    follow the current data. */
 
 const commands = createRegistry();
+let commandLinks = [];
+// Installed games come from Rust; the list is refreshed in the background on
+// every query, so a game installed a minute ago is found on the next keystroke.
+let commandGames = [];
+
+function refreshCommandGames() {
+  window.__TAURI__.core.invoke("steam_games")
+    .then((games) => (commandGames = games.map((g) => ({ name: g.name, id: g.id }))))
+    .catch(() => {});
+}
 
 function commandLists() {
-  return {};
+  return {
+    game: commandGames,
+    board: presets.map((p) => ({ name: p.name })),
+    link: commandLinks,
+  };
 }
 
 function commandContext() {
-  return { registry: commands };
+  return {
+    registry: commands,
+    openUrl: openLink,
+    music: () => musicData,
+    musicControl: (action) => window.__TAURI__.core.invoke("music_control", { action }),
+    showBoard: (name) => {
+      const preset = presets.find((p) => p.name === name);
+      if (preset) showBoard(preset);
+    },
+    // No chime for a timer started here: WebKit only lets this window make
+    // sound after a click in it, and the command came from the palette.
+    startTimer: (secs) => setClockTimer(startTimer(secs * 1000, Date.now())),
+    stopTimer: () => {
+      if (clockTimer.phase === "idle") return false;
+      setClockTimer(IDLE);
+      return true;
+    },
+  };
+}
+
+function persistLinks() {
+  try {
+    localStorage.setItem(LINKS_KEY, JSON.stringify(commandLinks));
+  } catch {}
+}
+
+function initLinksPanel() {
+  const panel = document.getElementById("links-panel");
+  const list = document.getElementById("links-list");
+  const name = document.getElementById("links-name");
+  const url = document.getElementById("links-url");
+  const err = document.getElementById("links-error");
+  try {
+    commandLinks = parseLinks(localStorage.getItem(LINKS_KEY));
+  } catch {}
+
+  const render = () => {
+    list.replaceChildren(...commandLinks.map((link) => {
+      const row = document.createElement("div");
+      row.className = "link-row";
+      const label = document.createElement("span");
+      label.className = "link-name";
+      label.textContent = link.name;
+      const href = document.createElement("span");
+      href.className = "wp-path";
+      href.textContent = link.url;
+      const remove = document.createElement("button");
+      remove.className = "link-remove";
+      remove.textContent = "×";
+      remove.title = `Remove "${link.name}"`;
+      remove.addEventListener("click", () => {
+        commandLinks = withoutLink(commandLinks, link.name);
+        persistLinks();
+        render();
+      });
+      row.append(label, href, remove);
+      return row;
+    }));
+  };
+  const add = () => {
+    try {
+      commandLinks = withLink(commandLinks, name.value, url.value);
+    } catch (e) {
+      err.textContent = e.message;
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
+    name.value = url.value = "";
+    persistLinks();
+    render();
+    name.focus();
+  };
+  document.getElementById("links-add").addEventListener("click", add);
+  for (const input of [name, url]) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") add();
+    });
+  }
+
+  document.getElementById("links-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    for (const id of ["display-menu", "wallpaper-panel", "settings-panel"]) document.getElementById(id).hidden = true;
+    err.hidden = true;
+    render();
+    panel.hidden = !panel.hidden;
+  });
+  panel.addEventListener("click", (e) => e.stopPropagation());
+  panel.addEventListener("pointerdown", (e) => e.stopPropagation());
+  document.addEventListener("click", () => (panel.hidden = true));
 }
 
 function initCommands() {
@@ -6039,7 +6143,10 @@ function initCommands() {
   window.__TAURI__.core.invoke("display_server").then((server) => {
     if (server === "wayland") btn.title = "Command bar (bind `aria --command` to a shortcut)";
   }).catch(() => {});
+  initLinksPanel();
+  refreshCommandGames();
   listen("palette-query", ({ payload }) => {
+    refreshCommandGames();
     const out = suggest(commands, payload.text, commandLists());
     emitTo("palette", "palette-result", { id: payload.id, ...out, items: out.items.map((i) => ({ label: i.label })) });
   });
