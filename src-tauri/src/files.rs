@@ -198,6 +198,10 @@ fn rebuild(app: &AppHandle) {
 fn build(roots: Vec<PathBuf>, max: usize) -> Index {
     let mut entries = Vec::new();
     for (i, root) in roots.iter().enumerate() {
+        // The root itself, so "open Dev folder" finds the folder that was added.
+        if let (Some(name), Ok(meta)) = (root.file_name(), root.metadata()) {
+            entries.push(Entry { key: words(&name.to_string_lossy()), path: root.clone(), root: i, dir: true, mtime: mtime(&meta) });
+        }
         walk(root, i, MAX_DEPTH, max, &mut entries);
     }
     let capped = entries.len() >= max;
@@ -221,7 +225,7 @@ fn walk(dir: &Path, root: usize, depth: usize, max: usize, out: &mut Vec<Entry>)
         if dir && SKIP_DIRS.contains(&name.as_str()) {
             continue;
         }
-        let mtime = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+        let mtime = mtime(&meta);
         let path = entry.path();
         // A macOS bundle is one thing to open, not a folder to search in.
         let descend = dir && depth > 1 && !name.ends_with(".app");
@@ -233,6 +237,10 @@ fn walk(dir: &Path, root: usize, depth: usize, max: usize, out: &mut Vec<Entry>)
         }
         out.push(Entry { key: words(&name), path, root, dir, mtime });
     }
+}
+
+fn mtime(meta: &std::fs::Metadata) -> u64 {
+    meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs())
 }
 
 fn is_hidden(name: &str, meta: &std::fs::Metadata) -> bool {
@@ -309,6 +317,16 @@ fn search(index: &Index, text: &str) -> Vec<Hit> {
 
 fn hit(index: &Index, e: &Entry) -> Hit {
     let root = &index.roots[e.root];
+    // A root is labelled by where it lives: "Dev — /home/t".
+    if e.path == *root {
+        return Hit {
+            name: root.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            path: root.to_string_lossy().into_owned(),
+            folder: root.parent().map_or_else(String::new, |p| p.to_string_lossy().into_owned()),
+            dir: true,
+            mtime: e.mtime,
+        };
+    }
     let mut folder = root.file_name().map_or_else(|| root.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());
     if let Some(rel) = e.path.parent().and_then(|p| p.strip_prefix(root).ok()) {
         for part in rel.components() {
@@ -421,6 +439,17 @@ mod tests {
         walk(&root, 0, 3, MAX_ENTRIES, &mut out);
         assert!(out.iter().any(|e| e.path.ends_with("a/b/c")));
         assert!(!out.iter().any(|e| e.path.ends_with("deep.txt")));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn search_finds_a_root_folder_itself() {
+        let root = tree("root");
+        let index = build(vec![root.join("school")], MAX_ENTRIES);
+        let hits = search(&index, "school");
+        assert_eq!(hits[0].path, root.join("school").to_string_lossy());
+        assert!(hits[0].dir);
+        assert_eq!(hits[0].folder, root.to_string_lossy());
         std::fs::remove_dir_all(&root).unwrap();
     }
 
