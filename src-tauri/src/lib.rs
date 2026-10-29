@@ -1,6 +1,7 @@
 mod apps;
 mod collectors;
 mod files;
+mod launchers;
 mod terminal;
 mod palette;
 mod settings;
@@ -79,6 +80,10 @@ pub fn run() {
             files::files_config,
             files::files_set_config,
             files::files_status,
+            launchers::launchers_config,
+            launchers::launchers_set_config,
+            launchers::launchers_check,
+            launchers::launchers_run,
             collectors::history::history_report,
             settings::settings_export,
             settings::settings_open,

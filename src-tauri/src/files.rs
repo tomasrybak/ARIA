@@ -170,6 +170,11 @@ fn indexed(files: &Files, path: &str) -> Result<(), String> {
     }
 }
 
+/// A folder of the index (a search root or one found under it).
+pub fn is_indexed_dir(files: &Files, path: &Path) -> bool {
+    files.index.read().unwrap().entries.iter().any(|e| e.dir && e.path == path)
+}
+
 /// Walks the folders on a blocking thread. One build at a time; a request
 /// during a build runs another one after it, so a folder change isn't lost.
 fn rebuild(app: &AppHandle) {
