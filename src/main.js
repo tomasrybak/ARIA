@@ -79,7 +79,7 @@ import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { appsWithoutGames, createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
-import { folderQuery, launcherBefore } from "./lib/launchers.js";
+import { folderQuery, joinCommand, launcherBefore, launcherFromLine } from "./lib/launchers.js";
 import { FILE_OPENS_KEY, droppedFolders, fileLists, parseOpens, recordOpen, searchStatusText } from "./lib/files.js";
 import { coinNames } from "./lib/answers.js";
 import {
@@ -6242,6 +6242,7 @@ function initCommandBarPanel() {
   }
 
   const search = initSearchSettings(panel);
+  const launchers = initLauncherSettings();
 
   document.getElementById("cmdbar-btn").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -6249,7 +6250,10 @@ function initCommandBarPanel() {
     err.hidden = true;
     render();
     panel.hidden = !panel.hidden;
-    if (!panel.hidden) search.refresh();
+    if (!panel.hidden) {
+      search.refresh();
+      launchers.refresh();
+    }
   });
   panel.addEventListener("click", (e) => e.stopPropagation());
   panel.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -6353,6 +6357,95 @@ function initSearchSettings(panel) {
       }
       render();
       showStatus();
+    },
+  };
+}
+
+const LAUNCHER_EXAMPLE = IS_MAC
+  ? "/Applications/kitty.app/Contents/MacOS/kitty --directory {dir} claude"
+  : IS_LINUX
+    ? "kitty --directory {dir} claude"
+    : "wt -d {dir} claude";
+
+// Saved through Rust like the search folders; each row shows where its
+// program was found, so a typo or an uninstalled program stands out.
+function initLauncherSettings() {
+  const { invoke } = window.__TAURI__.core;
+  const list = document.getElementById("launchers-list");
+  const name = document.getElementById("launcher-name");
+  const cmd = document.getElementById("launcher-cmd");
+  const err = document.getElementById("launcher-error");
+  cmd.placeholder = `command, e.g. ${LAUNCHER_EXAMPLE}`;
+
+  const showError = (msg) => {
+    err.textContent = msg;
+    err.hidden = !msg;
+  };
+
+  const save = async (next) => {
+    try {
+      commandLaunchers = await invoke("launchers_set_config", { launchers: next });
+      render();
+      return true;
+    } catch (e) {
+      showError(String(e));
+      return false;
+    }
+  };
+
+  const render = () => {
+    list.replaceChildren(...commandLaunchers.map((l) => {
+      const row = document.createElement("div");
+      row.className = "link-row";
+      const label = document.createElement("span");
+      label.className = "link-name";
+      label.textContent = l.name;
+      const line = document.createElement("span");
+      line.className = "wp-path launcher-cmd";
+      line.textContent = joinCommand([l.program, ...l.args]);
+      invoke("launchers_check", { program: l.program }).then(
+        (path) => (line.title = `Runs ${path}`),
+        (e) => {
+          line.classList.add("missing");
+          line.title = String(e);
+        },
+      );
+      const remove = document.createElement("button");
+      remove.className = "link-remove";
+      remove.textContent = "×";
+      remove.title = `Remove "${l.name}"`;
+      remove.addEventListener("click", () => save(commandLaunchers.filter((o) => o !== l)));
+      row.append(label, line, remove);
+      return row;
+    }));
+  };
+
+  const add = async () => {
+    let launcher;
+    try {
+      launcher = launcherFromLine(name.value, cmd.value);
+      await invoke("launchers_check", { program: launcher.program });
+    } catch (e) {
+      return showError(e instanceof Error ? e.message : String(e));
+    }
+    const lower = launcher.name.toLowerCase();
+    if (!(await save([...commandLaunchers.filter((l) => l.name.toLowerCase() !== lower), launcher]))) return;
+    showError("");
+    name.value = cmd.value = "";
+    name.focus();
+  };
+  document.getElementById("launcher-add").addEventListener("click", add);
+  for (const input of [name, cmd]) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") add();
+    });
+  }
+
+  return {
+    async refresh() {
+      showError("");
+      await refreshCommandLaunchers();
+      render();
     },
   };
 }

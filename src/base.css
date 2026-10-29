@@ -242,6 +242,15 @@
   grid-template-columns: 1fr auto;
 }
 
+/* A command reads from the program name on; a path keeps its tail visible. */
+.launcher-cmd {
+  direction: ltr;
+}
+
+.launcher-cmd.missing {
+  color: #e8736a;
+}
+
 .link-name {
   font: 500 0.78rem/1.2 "Inter", system-ui, sans-serif;
   color: #e6e8ec;

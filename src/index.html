@@ -132,6 +132,13 @@
               <button class="set-action" id="search-add">Add folder…</button>
               <div class="set-note" id="search-status"></div>
               <div class="wp-error" id="search-error" hidden></div>
+              <div class="set-head">Launchers</div>
+              <div class="set-note">Run a command in a search folder: "open claude code in ARIA". {dir} is the folder, which is also where the command starts. It runs without a shell, so pipes and $VARIABLES don't work.</div>
+              <div class="links-list" id="launchers-list"></div>
+              <input type="text" id="launcher-name" placeholder="name, e.g. claude code" autocomplete="off" />
+              <input type="text" id="launcher-cmd" autocomplete="off" spellcheck="false" />
+              <button class="set-action" id="launcher-add">Add launcher</button>
+              <div class="wp-error" id="launcher-error" hidden></div>
             </div>
             <div class="theme-menu wallpaper-panel" id="wallpaper-panel" hidden>
               <div class="wp-row">
