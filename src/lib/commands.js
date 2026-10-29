@@ -29,6 +29,7 @@
 //   coin  [{ name, symbol }] coins on the crypto widget, by symbol and full name
 //   file, folder [{ name, path, folder, weight, bonus }]  file search hits for
 //                          this query (see lib/files.js)
+//   launcher [{ name }]    saved launchers (see lib/launchers.js)
 
 import { defineActions, describe } from "./actions.js";
 import { match } from "./matcher.js";
@@ -172,6 +173,19 @@ export function buildActions() {
       run: async (ctx, a) => {
         await ctx.openFile(a.folder.path);
         return `Opening ${a.folder.name}`;
+      },
+    },
+    {
+      id: "launcher.open",
+      phrases: [
+        "open {launcher} in [the] {folder} [folder]",
+        "start {launcher} in [the] {folder} [folder]",
+        "{launcher} in [the] {folder} [folder]",
+      ],
+      label: (a) => `${a.launcher.name} in ${fileLabel(a.folder)}`,
+      run: async (ctx, a) => {
+        await ctx.runLauncher(a.launcher.name, a.folder.path);
+        return `Starting ${a.launcher.name} in ${a.folder.name}`;
       },
     },
     {

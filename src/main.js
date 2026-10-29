@@ -79,6 +79,7 @@ import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { appsWithoutGames, createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
+import { folderQuery, launcherBefore } from "./lib/launchers.js";
 import { FILE_OPENS_KEY, droppedFolders, fileLists, parseOpens, recordOpen, searchStatusText } from "./lib/files.js";
 import { coinNames } from "./lib/answers.js";
 import {
@@ -6053,9 +6054,41 @@ let fileOpens = {};
 
 async function searchFiles(text) {
   if (fileHits.text === text) return fileHits.hits;
-  const hits = await window.__TAURI__.core.invoke("files_search", { text }).catch(() => []);
+  const search = (t) => window.__TAURI__.core.invoke("files_search", { text: t }).catch(() => []);
+  const tail = folderQuery(text);
+  const [all, folders] = await Promise.all([search(text), tail ? search(tail) : []]);
+  const seen = new Set(all.map((h) => h.path));
+  const hits = [...all, ...folders.filter((h) => h.dir && !seen.has(h.path))];
   fileHits = { text, hits };
   return hits;
+}
+
+// Launchers only run in indexed folders, so "open claude code in X" fails
+// silently while search is off or X isn't under a search folder.
+async function missText(text) {
+  const launcher = launcherBefore(text, commandLaunchers);
+  if (!launcher) return "Didn't catch that.";
+  const config = await window.__TAURI__.core.invoke("files_config").catch(() => null);
+  if (!config?.enabled) return `File search is off: switch it on in Command bar… to run ${launcher.name} in a folder.`;
+  return `No search folder is called "${folderQuery(text)}".`;
+}
+
+// A folder a launcher ran in counts as opened, so it ranks up the same way.
+function countOpen(path) {
+  fileOpens = recordOpen(fileOpens, path, Date.now());
+  try {
+    localStorage.setItem(FILE_OPENS_KEY, JSON.stringify(fileOpens));
+  } catch {}
+}
+
+// Names only: Rust keeps the commands and runs a launcher by name.
+let commandLaunchers = [];
+
+function refreshCommandLaunchers() {
+  return window.__TAURI__.core
+    .invoke("launchers_config")
+    .then((list) => (commandLaunchers = list))
+    .catch((e) => console.error("launchers_config failed:", e));
 }
 
 function commandLists(hits) {
@@ -6064,6 +6097,7 @@ function commandLists(hits) {
     game: commandGames,
     board: presets.map((p) => ({ name: p.name })),
     link: commandLinks,
+    launcher: commandLaunchers.map((l) => ({ name: l.name })),
     coin: coinNames(cryptoData),
     ...fileLists(hits, fileOpens),
   };
@@ -6123,10 +6157,11 @@ function commandContext() {
     launchApp: (id) => window.__TAURI__.core.invoke("apps_launch", { id }),
     openFile: async (path) => {
       await window.__TAURI__.core.invoke("files_open", { path });
-      fileOpens = recordOpen(fileOpens, path, Date.now());
-      try {
-        localStorage.setItem(FILE_OPENS_KEY, JSON.stringify(fileOpens));
-      } catch {}
+      countOpen(path);
+    },
+    runLauncher: async (name, dir) => {
+      await window.__TAURI__.core.invoke("launchers_run", { name, dir });
+      countOpen(dir);
     },
     revealFile: (path) => window.__TAURI__.core.invoke("files_reveal", { path }),
     latestDownload: () => window.__TAURI__.core.invoke("files_latest"),
@@ -6339,6 +6374,7 @@ function initCommands() {
   } catch {}
   refreshCommandGames();
   refreshCommandApps();
+  refreshCommandLaunchers();
   listen("palette-query", async ({ payload }) => {
     refreshCommandGames();
     refreshCommandApps();
@@ -6351,7 +6387,7 @@ function initCommands() {
     const { items } = suggest(commands, payload.text, commandLists(hits));
     const chosen = items[payload.index] ?? items[0];
     if (!chosen) {
-      emitTo("palette", "palette-answer", { id: payload.id, text: "Didn't catch that.", error: false });
+      emitTo("palette", "palette-answer", { id: payload.id, text: await missText(payload.text), error: false });
       return;
     }
     const answers = await runSteps(commands, chosen.steps, commandContext());
