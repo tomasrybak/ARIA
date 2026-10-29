@@ -58,6 +58,8 @@ struct Index {
     roots: Vec<PathBuf>,
     entries: Vec<Entry>,
     built: Option<Instant>,
+    /// The walk stopped at the entry limit, so some names are missing.
+    capped: bool,
 }
 
 #[derive(Default)]
@@ -84,6 +86,7 @@ pub struct Status {
     /// Seconds since the last finished build; none before the first.
     age: Option<u64>,
     building: bool,
+    capped: bool,
 }
 
 pub fn init(app: &AppHandle) {
@@ -154,6 +157,7 @@ pub fn files_status(files: State<'_, Files>) -> Status {
         entries: index.entries.len(),
         age: index.built.map(|t| t.elapsed().as_secs()),
         building: files.building.load(Ordering::Relaxed),
+        capped: index.capped,
     }
 }
 
@@ -182,7 +186,7 @@ fn rebuild(app: &AppHandle) {
             Config { enabled: false, folders: Vec::new() }
         });
         // Off still counts as built, so searches don't retry every keystroke.
-        let index = if config.enabled { build(config.folders) } else { Index { built: Some(Instant::now()), ..Index::default() } };
+        let index = if config.enabled { build(config.folders, MAX_ENTRIES) } else { Index { built: Some(Instant::now()), ..Index::default() } };
         *files.index.write().unwrap() = index;
         files.building.store(false, Ordering::Release);
         if files.again.swap(false, Ordering::AcqRel) {
@@ -191,20 +195,21 @@ fn rebuild(app: &AppHandle) {
     });
 }
 
-fn build(roots: Vec<PathBuf>) -> Index {
+fn build(roots: Vec<PathBuf>, max: usize) -> Index {
     let mut entries = Vec::new();
     for (i, root) in roots.iter().enumerate() {
-        walk(root, i, MAX_DEPTH, &mut entries);
+        walk(root, i, MAX_DEPTH, max, &mut entries);
     }
-    Index { roots, entries, built: Some(Instant::now()) }
+    let capped = entries.len() >= max;
+    Index { roots, entries, built: Some(Instant::now()), capped }
 }
 
 /// Symlinks are not followed: a link back up the tree would loop, and one out
 /// of the folder would index what the user didn't choose.
-fn walk(dir: &Path, root: usize, depth: usize, out: &mut Vec<Entry>) {
+fn walk(dir: &Path, root: usize, depth: usize, max: usize, out: &mut Vec<Entry>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
-        if out.len() >= MAX_ENTRIES {
+        if out.len() >= max {
             return;
         }
         let Ok(meta) = entry.metadata() else { continue };
@@ -221,7 +226,10 @@ fn walk(dir: &Path, root: usize, depth: usize, out: &mut Vec<Entry>) {
         // A macOS bundle is one thing to open, not a folder to search in.
         let descend = dir && depth > 1 && !name.ends_with(".app");
         if descend {
-            walk(&path, root, depth - 1, out);
+            walk(&path, root, depth - 1, max, out);
+            if out.len() >= max {
+                return;
+            }
         }
         out.push(Entry { key: words(&name), path, root, dir, mtime });
     }
@@ -398,7 +406,7 @@ mod tests {
     #[test]
     fn walk_skips_hidden_and_build_folders() {
         let root = tree("walk");
-        let index = build(vec![root.clone()]);
+        let index = build(vec![root.clone()], MAX_ENTRIES);
         let hits = search(&index, "thesis");
         let mut found = names(&hits);
         found.sort();
@@ -410,16 +418,26 @@ mod tests {
     fn walk_stops_at_the_depth_limit() {
         let root = tree("depth");
         let mut out = Vec::new();
-        walk(&root, 0, 3, &mut out);
+        walk(&root, 0, 3, MAX_ENTRIES, &mut out);
         assert!(out.iter().any(|e| e.path.ends_with("a/b/c")));
         assert!(!out.iter().any(|e| e.path.ends_with("deep.txt")));
         std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
+    fn build_reports_the_entry_cap() {
+        let root = tree("cap");
+        assert!(!build(vec![root.clone()], MAX_ENTRIES).capped);
+        let index = build(vec![root.clone()], 3);
+        assert!(index.capped);
+        assert_eq!(index.entries.len(), 3);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn search_ranks_by_matched_words_and_names_the_folder() {
         let root = tree("search");
-        let index = build(vec![root.clone()]);
+        let index = build(vec![root.clone()], MAX_ENTRIES);
         let prace = search(&index, "open prace");
         assert_eq!(names(&prace), ["Diplomová práce.docx"]);
         let leaf = root.file_name().unwrap().to_string_lossy().into_owned();
