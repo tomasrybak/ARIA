@@ -79,7 +79,7 @@ import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { appsWithoutGames, createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
-import { FILE_OPENS_KEY, fileLists, parseOpens, recordOpen } from "./lib/files.js";
+import { FILE_OPENS_KEY, droppedFolders, fileLists, parseOpens, recordOpen, searchStatusText } from "./lib/files.js";
 import { coinNames } from "./lib/answers.js";
 import {
   BUILTIN_PRESETS,
@@ -6151,8 +6151,9 @@ function persistLinks() {
   } catch {}
 }
 
-function initLinksPanel() {
-  const panel = document.getElementById("links-panel");
+// "Command bar…" settings: saved links and the file search folders.
+function initCommandBarPanel() {
+  const panel = document.getElementById("cmdbar-panel");
   const list = document.getElementById("links-list");
   const name = document.getElementById("links-name");
   const url = document.getElementById("links-url");
@@ -6205,16 +6206,120 @@ function initLinksPanel() {
     });
   }
 
-  document.getElementById("links-btn").addEventListener("click", (e) => {
+  const search = initSearchSettings(panel);
+
+  document.getElementById("cmdbar-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     for (const id of ["display-menu", "wallpaper-panel", "settings-panel"]) document.getElementById(id).hidden = true;
     err.hidden = true;
     render();
     panel.hidden = !panel.hidden;
+    if (!panel.hidden) search.refresh();
   });
   panel.addEventListener("click", (e) => e.stopPropagation());
   panel.addEventListener("pointerdown", (e) => e.stopPropagation());
   document.addEventListener("click", () => (panel.hidden = true));
+}
+
+// Rust owns the config: every change goes through `files_set_config` and the
+// section renders what it returns, since Rust drops nested and missing folders.
+function initSearchSettings(panel) {
+  const { invoke } = window.__TAURI__.core;
+  const onoff = document.getElementById("search-onoff");
+  const list = document.getElementById("search-folders");
+  const statusEl = document.getElementById("search-status");
+  const err = document.getElementById("search-error");
+  let config = null;
+  let busy = false;
+  let poll = null;
+
+  const showError = (msg) => {
+    err.textContent = msg;
+    err.hidden = !msg;
+  };
+
+  const render = () => {
+    for (const b of onoff.children) b.classList.toggle("active", String(config.enabled) === b.dataset.on);
+    list.replaceChildren(...config.folders.map((folder) => {
+      const row = document.createElement("div");
+      row.className = "link-row folder-row";
+      const path = document.createElement("span");
+      path.className = "wp-path";
+      path.textContent = folder;
+      path.title = folder;
+      const remove = document.createElement("button");
+      remove.className = "link-remove";
+      remove.textContent = "×";
+      remove.title = `Stop searching ${folder}`;
+      remove.addEventListener("click", () => save({ ...config, folders: config.folders.filter((f) => f !== folder) }));
+      row.append(path, remove);
+      return row;
+    }));
+  };
+
+  // Polls only while a build runs and the panel is open.
+  const showStatus = async () => {
+    clearTimeout(poll);
+    let status;
+    try {
+      status = await invoke("files_status");
+    } catch (e) {
+      return console.error("files_status failed:", e);
+    }
+    statusEl.textContent = searchStatusText(status, config.enabled);
+    const pending = config.enabled && (status.building || status.age == null);
+    if (pending && !panel.hidden) poll = setTimeout(showStatus, 1000);
+  };
+
+  const save = async (next, picked = []) => {
+    if (busy) return;
+    busy = true;
+    try {
+      config = await invoke("files_set_config", { config: next });
+      showError(droppedFolders(picked, config.folders).join(" "));
+      render();
+      showStatus();
+    } catch (e) {
+      showError(String(e));
+    } finally {
+      busy = false;
+    }
+  };
+
+  onoff.addEventListener("click", (e) => {
+    const on = e.target.closest("button")?.dataset.on;
+    if (config && on && String(config.enabled) !== on) save({ ...config, enabled: on === "true" });
+  });
+
+  document.getElementById("search-add").addEventListener("click", async () => {
+    if (!config) return;
+    let picked = null;
+    try {
+      picked = await invoke("plugin:dialog|open", {
+        options: { title: "Choose folders to search", multiple: true, directory: true },
+      });
+    } catch (e) {
+      return showError(String(e));
+    }
+    if (!picked?.length) return;
+    save({ ...config, folders: [...config.folders, ...picked] }, picked);
+  });
+
+  return {
+    async refresh() {
+      showError("");
+      try {
+        config = await invoke("files_config");
+      } catch (e) {
+        config = null;
+        list.replaceChildren();
+        statusEl.textContent = "";
+        return showError(String(e));
+      }
+      render();
+      showStatus();
+    },
+  };
 }
 
 function initCommands() {
@@ -6228,7 +6333,7 @@ function initCommands() {
   window.__TAURI__.core.invoke("display_server").then((server) => {
     if (server === "wayland") btn.title = "Command bar (bind `aria --command` to a shortcut)";
   }).catch(() => {});
-  initLinksPanel();
+  initCommandBarPanel();
   try {
     fileOpens = parseOpens(localStorage.getItem(FILE_OPENS_KEY));
   } catch {}

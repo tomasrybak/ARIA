@@ -53,3 +53,33 @@ export function fileLists(hits, opens) {
 export function fileLabel(item) {
   return `${item.name} — ${item.folder}`;
 }
+
+/** Status line of the "Search files" settings, from Rust `files_status`. */
+export function searchStatusText(status, enabled) {
+  if (!enabled) return "Off: the command bar finds apps, boards and links only.";
+  if (status.building || status.age == null) return "Indexing…";
+  const names = `${status.entries.toLocaleString("en")} names`;
+  if (status.capped) return `Stopped at ${names}: choose smaller folders.`;
+  return `${names} · updated ${ago(status.age)}`;
+}
+
+function ago(secs) {
+  if (secs < 60) return "just now";
+  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
+  return `${Math.floor(secs / 3600)} h ago`;
+}
+
+/** Why picked folders are missing from the saved list (Rust drops nested and missing ones). */
+export function droppedFolders(picked, saved) {
+  return picked
+    .filter((p) => !saved.includes(p))
+    .map((p) => {
+      const parent = saved.find((f) => isUnder(p, f));
+      return parent ? `${p} is already covered by ${parent}.` : `${p} isn't a folder.`;
+    });
+}
+
+function isUnder(path, folder) {
+  if (!path.startsWith(folder)) return false;
+  return /[\\/]$/.test(folder) || /[\\/]/.test(path[folder.length] ?? "");
+}
