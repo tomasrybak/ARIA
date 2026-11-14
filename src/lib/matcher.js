@@ -21,6 +21,11 @@ export const CLEAR_LEAD = 0.05;
 const BARE_FACTOR = 0.95;
 // A misheard word still counts as the word if it is this close.
 const WORD_SIMILARITY = 0.8;
+// Free text fits any words, so it costs a little per word it takes: of two
+// readings, the one that explains more with fixed words wins ("search apple
+// music for X" over "search {X}"). The floor, 1 - TEXT_COST, stays above
+// RUN_SCORE so a text-only command still runs.
+const TEXT_COST = 0.15;
 
 const GREETINGS = new Set(["hey", "ok", "okay"]);
 const LEADING_FILLER = [["aria"], ["please"], ["can", "you"], ["could", "you"], ["would", "you"]];
@@ -235,10 +240,11 @@ export function parseTemplate(phrase) {
 /**
  * Resolutions of one slot, each `{ value, score }`; none means the words don't
  * fit. `raw` is the original text under the slot, which a text slot keeps.
+ * `total` is the number of words in the whole command.
  */
-function resolveSlot(type, words, raw, lists) {
+function resolveSlot(type, words, raw, lists, total) {
   const text = words.join(" ");
-  if (type === "text") return [{ value: raw, score: 1 }];
+  if (type === "text") return [{ value: raw, score: 1 - (TEXT_COST * words.length) / total }];
   if (type === "duration") {
     const secs = parseDuration(text);
     return secs ? [{ value: secs, score: 1 }] : [];
@@ -278,7 +284,7 @@ function readings(parts, tokens, raw, lists) {
       if (ti === tokens.length) return; // a slot never matches nothing
       const last = pi === parts.length - 1;
       for (let end = last ? tokens.length : ti + 1; end <= tokens.length; end++) {
-        for (const r of resolveSlot(p.type, tokens.slice(ti, end), raw(ti, end), lists)) {
+        for (const r of resolveSlot(p.type, tokens.slice(ti, end), raw(ti, end), lists, tokens.length)) {
           walk(pi + 1, end, words, Math.min(slotMin, r.score), { ...args, [p.slot]: r.value });
         }
       }

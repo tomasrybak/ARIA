@@ -144,3 +144,18 @@ test("unsure input offers choices, nonsense offers nothing", () => {
   assert.deepEqual(run("what is the meaning of life"), { kind: "none" });
   assert.deepEqual(run("   "), { kind: "none" });
 });
+
+test("free text yields to a phrase that reads more of the command as fixed words", () => {
+  const reg = defineActions([
+    { id: "web", phrases: ["search {query:text}"], run: noop },
+    { id: "music", phrases: ["search apple music for {query:text}"], run: noop },
+    { id: "note", phrases: ["note {body:text}"], run: noop },
+  ]);
+  const m = match("search apple music for daft punk", reg);
+  assert.equal(m.kind, "run");
+  assert.deepEqual([m.steps[0].action, m.steps[0].args.query], ["music", "daft punk"]);
+
+  const long = match("note " + "word ".repeat(40), reg);
+  assert.equal(long.kind, "run");
+  assert.ok(long.steps[0].score >= RUN_SCORE);
+});
