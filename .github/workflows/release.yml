@@ -17,10 +17,11 @@ permissions:
 env:
   # WebKitGTK 4.1 + the system libraries the Linux build links: appindicator
   # for the tray, librsvg for icons, libdbus for the keyring and Mutter's idle
-  # monitor, libssl for native-tls (IMAP), patchelf for the AppImage.
+  # monitor, libssl for native-tls (IMAP), libasound2 for the timer chime,
+  # patchelf for the AppImage.
   LINUX_DEPS: >-
     libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
-    libxdo-dev libssl-dev libdbus-1-dev pkg-config patchelf
+    libxdo-dev libssl-dev libdbus-1-dev libasound2-dev pkg-config patchelf
 
 jobs:
   test:

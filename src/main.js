@@ -960,7 +960,6 @@ let clockZones = [];
 let clockTimer = IDLE;
 // The nodes the tick patches; replaced by every renderClock().
 let clockRefs = null;
-let chime = null;
 
 function persistClock() {
   try {
@@ -1008,39 +1007,9 @@ function clockTick() {
   patchClock(now);
 }
 
-// WebKit lets an AudioContext make sound only once a user gesture has started
-// it, so it is armed by the click that starts a timer; a timer restored after
-// a reload ends with the toast alone. Kept suspended between chimes: a running
-// context is an open stream, which the screen-time tracker would read as media
-// playing (see Presence::Media in screentime.rs).
-function armChime() {
-  try {
-    chime ??= new AudioContext();
-    chime.resume().then(() => chime.suspend());
-  } catch {}
-}
-
-async function playChime() {
-  if (!chime) return;
-  try {
-    await chime.resume();
-  } catch {
-    return;
-  }
-  const t0 = chime.currentTime;
-  [880, 1320].forEach((freq, i) => {
-    const osc = chime.createOscillator();
-    const gain = chime.createGain();
-    const t = t0 + i * 0.22;
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
-    osc.connect(gain).connect(chime.destination);
-    osc.start(t);
-    osc.stop(t + 0.21);
-  });
-  setTimeout(() => chime.suspend(), 600);
+// Rust plays it (chime.rs): the webview may not make sound without a click in it.
+function playChime() {
+  window.__TAURI__.core.invoke("chime").catch((e) => console.error("chime failed:", e));
 }
 
 function clockButton(cls, label, onClick) {
@@ -1052,7 +1021,6 @@ function clockButton(cls, label, onClick) {
 }
 
 function toggleClockTimer() {
-  armChime();
   const now = Date.now();
   setClockTimer(isRunning(clockTimer) ? pause(clockTimer, now) : resume(clockTimer, now));
 }
@@ -1076,14 +1044,12 @@ function clockControls(err) {
   for (const min of [5, 15]) {
     row.append(
       clockButton("period-btn", `${min}M`, () => {
-        armChime();
         setClockTimer(startTimer(min * 60_000, Date.now()));
       }),
     );
   }
   row.append(
     clockButton("period-btn", "POMODORO", () => {
-      armChime();
       setClockTimer(startPomodoro(Date.now()));
     }),
   );
@@ -1096,7 +1062,6 @@ function clockControls(err) {
       err.textContent = `whole minutes, 1–${MAX_MINUTES}`;
       return;
     }
-    armChime();
     setClockTimer(startTimer(ms, Date.now()));
   });
   start.title = "Start a timer for this many minutes";
@@ -6177,8 +6142,6 @@ function commandContext() {
       const preset = presets.find((p) => p.name === name);
       if (preset) showBoard(preset);
     },
-    // No chime for a timer started here: WebKit only lets this window make
-    // sound after a click in it, and the command came from the palette.
     startTimer: (secs) => setClockTimer(startTimer(secs * 1000, Date.now())),
     stopTimer: () => {
       if (clockTimer.phase === "idle") return false;

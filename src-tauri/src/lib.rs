@@ -1,4 +1,5 @@
 mod apps;
+mod chime;
 mod collectors;
 mod files;
 mod launchers;
@@ -70,6 +71,7 @@ pub fn run() {
             window::display_server,
             window::place_on_monitor,
             palette::palette_open,
+            chime::chime,
             system::volume,
             apps::apps_list,
             apps::apps_launch,
