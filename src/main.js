@@ -79,6 +79,7 @@ import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { appsWithoutGames, createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
+import { DEFAULT_SEARCH_URL, searchUrl } from "./lib/websearch.js";
 import { folderQuery, joinCommand, launcherBefore, launcherFromLine } from "./lib/launchers.js";
 import { FILE_OPENS_KEY, droppedFolders, fileLists, parseOpens, recordOpen, searchStatusText } from "./lib/files.js";
 import { coinNames } from "./lib/answers.js";
@@ -6025,6 +6026,7 @@ function initSettingsMenu() {
 const commands = createRegistry();
 let lastCommandAnswer = null;
 let commandLinks = [];
+let searchTemplate = DEFAULT_SEARCH_URL;
 // Installed games come from Rust; the list is refreshed in the background on
 // every query, so a game installed a minute ago is found on the next keystroke.
 let commandGames = [];
@@ -6140,6 +6142,7 @@ function commandContext() {
   return {
     registry: commands,
     openUrl: openLink,
+    searchUrl: (query) => searchUrl(searchTemplate, query),
     music: () => musicData,
     facts: commandFacts,
     lastAnswer: () => lastCommandAnswer,

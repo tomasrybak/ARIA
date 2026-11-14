@@ -3,6 +3,7 @@
 // tested with a fake one:
 //   ctx.registry          the registry itself (help lists it)
 //   ctx.openUrl(url)      system opener
+//   ctx.searchUrl(query)  web search address for the query (lib/websearch.js)
 //   ctx.music()           latest "music" collector state, or null
 //   ctx.musicControl(op)  "playpause" | "next" | "previous"
 //   ctx.showBoard(name)   apply a board preset, as a click in the menu would
@@ -116,6 +117,20 @@ export function buildActions() {
       label: (a) => `Search Apple Music for "${a.query}"`,
       run: (ctx, a) => {
         ctx.openUrl(`https://music.apple.com/search?term=${encodeURIComponent(a.query)}`);
+      },
+    },
+    {
+      id: "web.search",
+      phrases: [
+        "search [the] web for {query:text}",
+        "search for {query:text}",
+        "search {query:text}",
+        "google {query:text}",
+        "look up {query:text}",
+      ],
+      label: (a) => `Search the web for "${a.query}"`,
+      run: (ctx, a) => {
+        ctx.openUrl(ctx.searchUrl(a.query));
       },
     },
     {

@@ -23,6 +23,7 @@ function fakeCtx({ music = null, timer = false, last = null } = {}) {
     calls,
     registry,
     openUrl: (url) => calls.push(["open", url]),
+    searchUrl: (q) => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
     music: () => music,
     musicControl: async (op) => calls.push(["music", op]),
     showBoard: (name) => calls.push(["board", name]),
@@ -92,6 +93,14 @@ test("boards, timers and links", async () => {
 test("apple music search keeps the query as typed and encodes it", async () => {
   const { ctx } = await say("search apple music for Daft Punk & friends");
   assert.deepEqual(ctx.calls, [["open", "https://music.apple.com/search?term=Daft%20Punk%20%26%20friends"]]);
+});
+
+test("web search opens the query in the search template", async () => {
+  for (const text of ["search rust lifetimes", "search the web for rust lifetimes", "look up rust lifetimes"]) {
+    assert.deepEqual((await say(text)).ctx.calls, [["open", "https://duckduckgo.com/?q=rust%20lifetimes"]], text);
+  }
+  const { ctx } = await say("search apple music for Daft Punk");
+  assert.deepEqual(ctx.calls, [["open", "https://music.apple.com/search?term=Daft%20Punk"]]);
 });
 
 test("compound commands run every part", async () => {
