@@ -17,6 +17,7 @@ export const STORAGE_KEYS = [
   "aria-crypto-period",
   "aria-term-fontsize",
   "aria-links",
+  "aria-search-url",
 ];
 
 // Window placement travels too, but importing it is the user's choice: it

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkSearchTemplate, DEFAULT_SEARCH_URL, parseSearchTemplate, searchUrl } from "../src/lib/websearch.js";
+import { checkSearchTemplate, DEFAULT_SEARCH_URL, parseSearchTemplate, SEARCH_KEY, searchUrl } from "../src/lib/websearch.js";
+import { STORAGE_KEYS } from "../src/lib/settings.js";
 
 test("searchUrl encodes the whole query into the slot", () => {
   assert.equal(searchUrl(DEFAULT_SEARCH_URL, "  rust & tauri?#1 "), "https://duckduckgo.com/?q=rust%20%26%20tauri%3F%231");
@@ -25,4 +26,8 @@ test("parseSearchTemplate falls back to the default", () => {
   assert.equal(parseSearchTemplate(null), DEFAULT_SEARCH_URL);
   assert.equal(parseSearchTemplate("ftp://x.org/{q}"), DEFAULT_SEARCH_URL);
   assert.equal(parseSearchTemplate("https://www.startpage.com/do/search?q={q}"), "https://www.startpage.com/do/search?q={q}");
+});
+
+test("the search address travels with the settings export", () => {
+  assert.ok(STORAGE_KEYS.includes(SEARCH_KEY));
 });

@@ -79,7 +79,7 @@ import { PURPOSES, generateBoard } from "./lib/boardgen.js";
 import { runSteps } from "./lib/actions.js";
 import { appsWithoutGames, createRegistry, suggest } from "./lib/commands.js";
 import { LINKS_KEY, parseLinks, withLink, withoutLink } from "./lib/links.js";
-import { DEFAULT_SEARCH_URL, searchUrl } from "./lib/websearch.js";
+import { checkSearchTemplate, DEFAULT_SEARCH_URL, parseSearchTemplate, SEARCH_KEY, searchUrl } from "./lib/websearch.js";
 import { folderQuery, joinCommand, launcherBefore, launcherFromLine } from "./lib/launchers.js";
 import { FILE_OPENS_KEY, droppedFolders, fileLists, parseOpens, recordOpen, searchStatusText } from "./lib/files.js";
 import { coinNames } from "./lib/answers.js";
@@ -6251,6 +6251,7 @@ function initCommandBarPanel() {
 
   const search = initSearchSettings(panel);
   const launchers = initLauncherSettings();
+  const engine = initWebSearchSettings();
 
   document.getElementById("cmdbar-btn").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -6259,6 +6260,7 @@ function initCommandBarPanel() {
     render();
     panel.hidden = !panel.hidden;
     if (!panel.hidden) {
+      engine.refresh();
       search.refresh();
       launchers.refresh();
     }
@@ -6266,6 +6268,38 @@ function initCommandBarPanel() {
   panel.addEventListener("click", (e) => e.stopPropagation());
   panel.addEventListener("pointerdown", (e) => e.stopPropagation());
   document.addEventListener("click", () => (panel.hidden = true));
+}
+
+// The web search address. Import reloads the window, so reading it once here is enough.
+function initWebSearchSettings() {
+  const input = document.getElementById("websearch-url");
+  const err = document.getElementById("websearch-error");
+  try {
+    searchTemplate = parseSearchTemplate(localStorage.getItem(SEARCH_KEY));
+  } catch {}
+
+  const refresh = () => {
+    input.value = searchTemplate;
+    err.hidden = true;
+  };
+  const save = () => {
+    try {
+      searchTemplate = checkSearchTemplate(input.value);
+    } catch (e) {
+      err.textContent = e.message;
+      err.hidden = false;
+      return;
+    }
+    try {
+      localStorage.setItem(SEARCH_KEY, searchTemplate);
+    } catch {}
+    refresh();
+  };
+  document.getElementById("websearch-save").addEventListener("click", save);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") save();
+  });
+  return { refresh };
 }
 
 // Rust owns the config: every change goes through `files_set_config` and the
