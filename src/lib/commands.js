@@ -346,14 +346,20 @@ export function createRegistry() {
 /**
  * Palette rows for what is typed so far: the steps that would run, or the
  * "did you mean" options. `run: true` marks a confident match.
+ * `webSearch` adds a last row that searches the web for the text as typed
+ * when nothing runs. Typed input only: a misheard voice command should not
+ * turn into a search.
  */
-export function suggest(registry, text, lists) {
+export function suggest(registry, text, lists, { webSearch = false } = {}) {
   const m = match(text, registry, lists);
   if (m.kind === "run") {
     return { run: true, items: [{ label: m.steps.map((s) => describe(registry, s)).join(" → "), steps: m.steps }] };
   }
-  if (m.kind === "choose") {
-    return { run: false, items: m.options.map((o) => ({ label: describe(registry, o), steps: [o] })) };
+  const items = m.kind === "choose" ? m.options.map((o) => ({ label: describe(registry, o), steps: [o] })) : [];
+  const query = String(text).trim();
+  if (webSearch && query) {
+    const step = { action: "web.search", args: { query } };
+    items.push({ label: describe(registry, step), steps: [step] });
   }
-  return { run: false, items: [] };
+  return { run: false, items };
 }

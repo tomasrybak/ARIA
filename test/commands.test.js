@@ -132,6 +132,20 @@ test("suggest: one runnable row, choices, or nothing", () => {
   assert.deepEqual(suggest(registry, "make me a sandwich", lists), { run: false, items: [] });
 });
 
+test("suggest: typed text that runs nothing offers a web search last", () => {
+  const web = { webSearch: true };
+  const miss = suggest(registry, "  make me a sandwich ", lists, web);
+  assert.deepEqual(miss.items.map((i) => i.label), ['Search the web for "make me a sandwich"']);
+  assert.deepEqual(miss.items[0].steps, [{ action: "web.search", args: { query: "make me a sandwich" } }]);
+
+  const pick = suggest(registry, "launch 2", lists, web);
+  assert.ok(pick.items.length >= 3);
+  assert.equal(pick.items.at(-1).steps[0].action, "web.search");
+
+  assert.equal(suggest(registry, "what can I say", lists, web).items.length, 1);
+  assert.deepEqual(suggest(registry, "   ", lists, web).items, []);
+});
+
 test("dictated notes keep the user's words, typed reminders pass through", async () => {
   const { ctx, text } = await say("Note: Email Pavel about the exam, tomorrow!");
   assert.deepEqual(ctx.calls, [["note", "Email Pavel about the exam, tomorrow"]]);

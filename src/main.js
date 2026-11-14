@@ -6105,6 +6105,11 @@ function commandLists(hits) {
   };
 }
 
+// A launcher command that found no folder gets missText's hint, not a web search.
+function paletteOptions(text) {
+  return { webSearch: !launcherBefore(text, commandLaunchers) };
+}
+
 function commandFacts() {
   const now = Date.now();
   return {
@@ -6475,12 +6480,12 @@ function initCommands() {
     refreshCommandGames();
     refreshCommandApps();
     const hits = await searchFiles(payload.text);
-    const out = suggest(commands, payload.text, commandLists(hits));
+    const out = suggest(commands, payload.text, commandLists(hits), paletteOptions(payload.text));
     emitTo("palette", "palette-result", { id: payload.id, ...out, items: out.items.map((i) => ({ label: i.label })) });
   });
   listen("palette-run", async ({ payload }) => {
     const hits = await searchFiles(payload.text);
-    const { items } = suggest(commands, payload.text, commandLists(hits));
+    const { items } = suggest(commands, payload.text, commandLists(hits), paletteOptions(payload.text));
     const chosen = items[payload.index] ?? items[0];
     if (!chosen) {
       emitTo("palette", "palette-answer", { id: payload.id, text: await missText(payload.text), error: false });
