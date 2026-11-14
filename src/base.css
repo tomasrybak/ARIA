@@ -655,6 +655,46 @@
   display: none;
 }
 
+/* A finished timer: centred, large and pulsing with the beep, so it is seen
+   from across the room. */
+.auto-toast--alarm {
+  --alarm-accent: var(--accent, var(--color-accent, #e8ac53));
+  top: 50%;
+  bottom: auto;
+  flex-direction: column;
+  gap: 22px;
+  padding: 32px 48px 28px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--alarm-accent);
+  border-radius: 18px;
+  font-size: 2.4rem;
+  font-weight: 600;
+  animation: alarm-pulse 2s ease-out infinite;
+}
+
+.auto-toast--alarm button {
+  padding: 10px 40px;
+  font-size: 1.1rem;
+  background: var(--alarm-accent);
+  color: #111;
+}
+
+.auto-toast--alarm button:hover {
+  background: var(--alarm-accent);
+  filter: brightness(1.15);
+}
+
+@keyframes alarm-pulse {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--alarm-accent) 70%, transparent), 0 12px 40px rgba(0, 0, 0, 0.5); }
+  to { box-shadow: 0 0 0 36px transparent, 0 12px 40px rgba(0, 0, 0, 0.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-toast--alarm {
+    animation: none;
+  }
+}
+
 .preset-empty {
   padding: 7px 10px 9px;
   font: 400 0.74rem/1.35 "Inter", system-ui, sans-serif;

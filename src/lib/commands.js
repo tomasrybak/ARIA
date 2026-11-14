@@ -14,6 +14,7 @@
 //   ctx.volume(op)        { op: "up"|"down"|"mute"|"unmute" } or { op: "set", level }
 //                         → { percent, muted } after the change
 //   ctx.startTimer(secs)  ctx.stopTimer() → false when no timer was running
+//   ctx.stopAlarm()       silence a finished timer → false when nothing was ringing
 //   ctx.addNote(text)     add to the Notes widget → the note as stored
 //   ctx.lastAnswer()      the last answer worth repeating, or null
 //   ctx.facts()           snapshot of collector data for questions: { now, hw,
@@ -160,7 +161,16 @@ export function buildActions() {
       id: "timer.stop",
       phrases: ["stop [the] timer", "cancel [the] timer"],
       widget: "clock",
-      run: (ctx) => (ctx.stopTimer() ? "Timer stopped" : "No timer is running"),
+      run: (ctx) => {
+        if (ctx.stopAlarm()) return "Alarm off";
+        return ctx.stopTimer() ? "Timer stopped" : "No timer is running";
+      },
+    },
+    {
+      id: "alarm.stop",
+      phrases: ["ok", "okay", "dismiss", "stop [the] alarm", "turn [the] alarm off", "turn it off"],
+      widget: "clock",
+      run: (ctx) => (ctx.stopAlarm() ? "Alarm off" : "Nothing is ringing"),
     },
     {
       id: "link.open",
@@ -241,10 +251,11 @@ export function buildActions() {
     },
     {
       // Closes the bar now; with speech it will also cut an answer short.
+      // "stop" is also the first thing anyone says to a ringing alarm.
       id: "meta.cancel",
       phrases: ["cancel", "stop", "never mind", "nevermind", "forget it"],
       feedback: false,
-      run: () => {},
+      run: (ctx) => (ctx.stopAlarm() ? "Alarm off" : undefined),
     },
     {
       id: "meta.help",

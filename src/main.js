@@ -16,6 +16,8 @@ import {
   rangeBar,
 } from "./lib/weather.js";
 import {
+  ALARM_EVERY_MS,
+  ALARM_MAX_MS,
   BREAK_MS,
   IDLE,
   MAX_MINUTES,
@@ -995,12 +997,11 @@ function clockTick() {
   const now = Date.now();
   const { state, ended } = tick(clockTimer, now);
   if (state !== clockTimer) setClockTimer(state);
-  if (ended) {
-    const text = {
-      timer: "Timer done",
-      focus: `Focus done · ${BREAK_MS / 60_000} min break`,
-      break: "Break over · back to focus",
-    }[ended];
+  if (ended === "timer") {
+    showAlarmToast("Timer done");
+    startAlarm();
+  } else if (ended) {
+    const text = ended === "focus" ? `Focus done · ${BREAK_MS / 60_000} min break` : "Break over · back to focus";
     showToast(text, false, "clock");
     playChime();
   }
@@ -1010,6 +1011,30 @@ function clockTick() {
 // Rust plays it (chime.rs): the webview may not make sound without a click in it.
 function playChime() {
   window.__TAURI__.core.invoke("chime").catch((e) => console.error("chime failed:", e));
+}
+
+// A finished plain timer rings until stopped (toast button, "ok", "stop") or
+// for ALARM_MAX_MS. Pomodoro phases chime once and run on. Not restored after
+// a restart: a missed end only shows the toast.
+let alarmTimer = null;
+
+function startAlarm() {
+  clearTimeout(alarmTimer);
+  const until = Date.now() + ALARM_MAX_MS;
+  const ring = () => {
+    playChime();
+    alarmTimer = Date.now() + ALARM_EVERY_MS < until ? setTimeout(ring, ALARM_EVERY_MS) : null;
+  };
+  ring();
+}
+
+/** Silences the alarm and closes its toast; false if nothing was ringing. */
+function stopAlarm() {
+  const ringing = alarmTimer !== null;
+  clearTimeout(alarmTimer);
+  alarmTimer = null;
+  if (!document.getElementById("auto-toast-stop").hidden) hideToast();
+  return ringing;
 }
 
 function clockButton(cls, label, onClick) {
@@ -4973,6 +4998,7 @@ function initAutomation() {
     undoAutoSwitch();
     hideToast();
   });
+  document.getElementById("auto-toast-stop").addEventListener("click", stopAlarm);
   // Deliberate input only — hovering over the HUD is not working in it.
   for (const ev of ["pointerdown", "keydown", "wheel"]) {
     window.addEventListener(ev, () => (hudInputAt = Date.now()), { capture: true, passive: true });
@@ -5088,11 +5114,21 @@ function boardChangedByHand() {
 function showToast(text, undoable, kind = "auto") {
   const toast = document.getElementById("auto-toast");
   toast.classList.toggle("auto-toast--clock", kind === "clock");
+  toast.classList.remove("auto-toast--alarm");
   document.getElementById("auto-toast-text").textContent = text;
   document.getElementById("auto-toast-undo").hidden = !undoable;
+  document.getElementById("auto-toast-stop").hidden = true;
   toast.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, undoable ? 8000 : 4000);
+}
+
+/** Stays until the alarm is stopped, also after it gives up ringing. */
+function showAlarmToast(text) {
+  showToast(text, false, "clock");
+  clearTimeout(toastTimer);
+  document.getElementById("auto-toast").classList.add("auto-toast--alarm");
+  document.getElementById("auto-toast-stop").hidden = false;
 }
 
 function hideToast() {
@@ -6143,6 +6179,7 @@ function commandContext() {
       if (preset) showBoard(preset);
     },
     startTimer: (secs) => setClockTimer(startTimer(secs * 1000, Date.now())),
+    stopAlarm,
     stopTimer: () => {
       if (clockTimer.phase === "idle") return false;
       setClockTimer(IDLE);

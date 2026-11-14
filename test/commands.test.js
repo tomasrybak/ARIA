@@ -17,7 +17,7 @@ const lists = {
 };
 
 /** A ctx that records what the actions asked for. */
-function fakeCtx({ music = null, timer = false, last = null } = {}) {
+function fakeCtx({ music = null, timer = false, last = null, ringing = false } = {}) {
   const calls = [];
   return {
     calls,
@@ -29,6 +29,7 @@ function fakeCtx({ music = null, timer = false, last = null } = {}) {
     showBoard: (name) => calls.push(["board", name]),
     startTimer: (secs) => calls.push(["timer", secs]),
     stopTimer: () => (calls.push(["stop"]), timer),
+    stopAlarm: () => (calls.push(["alarm"]), ringing),
     addNote: (text) => (calls.push(["note", text]), text.trim() ? { text: text.trim().slice(0, 140) } : null),
     lastAnswer: () => last,
     launchApp: async (id) => calls.push(["app", id]),
@@ -103,6 +104,20 @@ test("web search opens the query in the search template", async () => {
   assert.deepEqual(ctx.calls, [["open", "https://music.apple.com/search?term=Daft%20Punk"]]);
 });
 
+test("a ringing alarm stops with ok, stop or stop the timer", async () => {
+  const ringing = () => fakeCtx({ ringing: true, timer: true });
+  for (const text of ["ok", "okay", "hey aria ok", "dismiss", "stop the alarm", "turn it off"]) {
+    assert.equal((await say(text, ringing())).text, "Alarm off", text);
+  }
+  assert.equal((await say("ok")).text, "Nothing is ringing");
+
+  const stop = await say("stop the timer", ringing());
+  assert.equal(stop.text, "Alarm off");
+  assert.deepEqual(stop.ctx.calls, [["alarm"]], "the running timer is left alone");
+  assert.equal((await say("stop", ringing())).text, "Alarm off");
+  assert.ok(!(await say("stop")).text);
+});
+
 test("compound commands run every part", async () => {
   const { ctx } = await say("pause the music and switch to study", fakeCtx({ music: { status: "playing" } }));
   assert.deepEqual(ctx.calls, [["music", "playpause"], ["board", "Study"]]);
@@ -160,7 +175,7 @@ test("repeat and cancel", async () => {
   assert.equal((await say("say that again")).text, "Nothing to repeat yet");
   const cancel = await say("never mind");
   assert.equal(cancel.answers[0].feedback, false);
-  assert.equal((await say("stop")).ctx.calls.length, 0);
+  assert.deepEqual((await say("stop")).ctx.calls, [["alarm"]], "only the alarm, never music or the timer");
   // "stop" alone cancels; with an object it is that object's action.
   assert.equal(match("stop the music", registry, lists).steps[0].action, "media.pause");
   assert.equal(match("stop the timer", registry, lists).steps[0].action, "timer.stop");

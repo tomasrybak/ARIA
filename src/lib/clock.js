@@ -18,6 +18,9 @@ export const BREAK_MS = 5 * 60_000;
 /** An end missed by more than this (ARIA closed, machine asleep) clears silently. */
 export const STALE_MS = 10 * 60_000;
 export const MAX_MINUTES = 600;
+/** A finished timer rings this often until stopped, and gives up after ALARM_MAX_MS. */
+export const ALARM_EVERY_MS = 2000;
+export const ALARM_MAX_MS = 2 * 60_000;
 
 export const IDLE = Object.freeze({ phase: "idle", total: 0, rounds: 0, endsAt: null, left: null });
 const PHASES = new Set(["timer", "focus", "break"]);
